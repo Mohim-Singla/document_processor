@@ -113,8 +113,13 @@ export async function getProfile() {
 }
 
 // Sessions APIs
-export async function getSessions(status = 'ACTIVE') {
-  return fetchApi(`/sessions?status=${status}`);
+export async function getSessions({ status = 'ACTIVE', cursor = null, limit = 12, search = '' } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (cursor) params.append('cursor', cursor);
+  if (limit) params.append('limit', limit);
+  if (search && search.trim()) params.append('search', search.trim());
+  return fetchApi(`/sessions?${params.toString()}`);
 }
 
 export async function getSessionById(sessionId) {

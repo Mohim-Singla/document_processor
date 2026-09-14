@@ -24,6 +24,9 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
 
   // Confirmation modal state
@@ -42,22 +45,60 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
     window.history.replaceState({}, '', url);
   };
 
-  const loadSessions = async () => {
+  const loadInitialSessions = async () => {
     try {
       setLoading(true);
       setError('');
-      const res = await getSessions(filter);
-      const list = res.response || res.data || (Array.isArray(res) ? res : []);
-      setSessions(list);
+      const res = await getSessions({
+        status: filter,
+        cursor: null,
+        limit: 12,
+        search: searchQuery,
+      });
+      const data = res.response || res.data || {};
+      if (Array.isArray(data)) {
+        setSessions(data);
+        setNextCursor(null);
+        setHasMore(false);
+      } else {
+        setSessions(data.sessions || []);
+        setNextCursor(data.nextCursor || null);
+        setHasMore(Boolean(data.hasMore));
+      }
     } catch (err) {
       console.error('Failed to load sessions from backend:', err);
       setError(err.message || 'Failed to connect to backend.');
       setSessions([]);
+      setNextCursor(null);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
   };
 
+  const loadMoreSessions = async () => {
+    if (loadingMore || !hasMore || !nextCursor) return;
+    try {
+      setLoadingMore(true);
+      const res = await getSessions({
+        status: filter,
+        cursor: nextCursor,
+        limit: 12,
+        search: searchQuery,
+      });
+      const data = res.response || res.data || {};
+      const newSessions = data.sessions || [];
+      setSessions((prev) => [...prev, ...newSessions]);
+      setNextCursor(data.nextCursor || null);
+      setHasMore(Boolean(data.hasMore));
+    } catch (err) {
+      console.error('Failed to load more sessions:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Debounced search / filter reload
   useEffect(() => {
     localStorage.setItem('dashboardSessionFilter', filter);
     const url = new URL(window.location);
@@ -67,8 +108,34 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       url.searchParams.delete('tab');
     }
     window.history.replaceState({}, '', url);
-    loadSessions();
-  }, [filter]);
+
+    const handler = setTimeout(() => {
+      loadInitialSessions();
+    }, 250);
+
+    return () => clearTimeout(handler);
+  }, [filter, searchQuery]);
+
+  // Infinite scroll intersection observer
+  useEffect(() => {
+    if (!hasMore || loadingMore || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMoreSessions();
+        }
+      },
+      { root: null, rootMargin: '200px', threshold: 0.1 }
+    );
+
+    const sentinel = document.getElementById('infinite-scroll-sentinel');
+    if (sentinel) {
+      observer.observe(sentinel);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, nextCursor, filter, searchQuery]);
 
   const handleCreate = async (data) => {
     try {
@@ -114,10 +181,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
     }
   };
 
-  const filteredSessions = sessions.filter((s) =>
-    s.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.description && s.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredSessions = sessions;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
@@ -240,18 +304,31 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredSessions.map((session) => (
-              <SessionCard
-                key={session.sessionId}
-                session={session}
-                onSelect={onSelectSession}
-                onArchive={handleArchive}
-                onRestore={handleRestore}
-                onDelete={(id) => setDeleteTargetSessionId(id)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredSessions.map((session) => (
+                <SessionCard
+                  key={session.sessionId}
+                  session={session}
+                  onSelect={onSelectSession}
+                  onArchive={handleArchive}
+                  onRestore={handleRestore}
+                  onDelete={(id) => setDeleteTargetSessionId(id)}
+                />
+              ))}
+            </div>
+
+            {/* Infinite scroll trigger sentinel */}
+            <div id="infinite-scroll-sentinel" className="h-4 w-full" />
+
+            {/* Circular loader for pagination */}
+            {loadingMore && (
+              <div className="flex flex-col items-center justify-center py-6">
+                <RefreshCw className="w-5 h-5 animate-spin text-indigo-400 mb-1" />
+                <span className="text-[11px] text-slate-400 font-medium">Loading more sessions...</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 

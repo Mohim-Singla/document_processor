@@ -1,6 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
-import { s3Service } from '../service/s3Service.js';
 import { SESSION_STATUS } from '../utils/constant/status.js';
 import { logger } from '../utils/logger.js';
 
@@ -9,10 +8,15 @@ const CONTEXT = 'sessionController';
 export async function listSessions(req, res) {
   const SUB_CONTEXT = listSessions.name;
   try {
-    const { status = SESSION_STATUS.ACTIVE } = req.query;
+    const {
+      status = SESSION_STATUS.ACTIVE,
+      cursor = null,
+      limit = 12,
+      search = '',
+    } = req.query;
     const userId = req.user.userId;
 
-    logger.info('Listing sessions for user', CONTEXT, SUB_CONTEXT, { userId, status });
+    logger.info('Listing sessions for user', CONTEXT, SUB_CONTEXT, { userId, status, cursor, limit, search });
 
     // Strict owner scoping: Only fetch sessions owned by this user that are not deleted
     const filter = { userId, isDeleted: false };
@@ -20,9 +24,42 @@ export async function listSessions(req, res) {
       filter.status = status;
     }
 
-    const sessions = await mongoRepositories.sessions.fetchAll(filter);
-    logger.info('Fetched sessions successfully', CONTEXT, SUB_CONTEXT, { count: sessions.length });
-    return res.success('Sessions fetched successfully', sessions);
+    if (search && search.trim()) {
+      const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.$and = [
+        {
+          $or: [
+            { title: { $regex: escaped, $options: 'i' } },
+            { description: { $regex: escaped, $options: 'i' } },
+          ],
+        },
+      ];
+    }
+
+    let parsedCursor = null;
+    if (cursor) {
+      try {
+        parsedCursor = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
+      } catch (err) {
+        logger.warn('Invalid cursor provided', CONTEXT, SUB_CONTEXT, { cursor, error: err.message });
+        return res.error('Invalid cursor format', 'BAD_REQUEST', 400);
+      }
+    }
+
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 12, 1), 50);
+
+    const result = await mongoRepositories.sessions.fetchPaginated({
+      filter,
+      cursor: parsedCursor,
+      limit: parsedLimit,
+    });
+
+    logger.info('Fetched sessions successfully', CONTEXT, SUB_CONTEXT, {
+      count: result.sessions.length,
+      hasMore: result.hasMore,
+    });
+
+    return res.success('Sessions fetched successfully', result);
   } catch (error) {
     logger.error('Error fetching sessions', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to fetch sessions', error.message, 500);

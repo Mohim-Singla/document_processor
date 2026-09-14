@@ -20,6 +20,8 @@ const schema = new mongoose.Schema(
   { timestamps: true }
 );
 
+schema.index({ userId: 1, status: 1, isDeleted: 1, updatedAt: -1, _id: -1 });
+
 let model;
 
 export const sessionsModel = {

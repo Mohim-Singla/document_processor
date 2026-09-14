@@ -4,20 +4,20 @@ async function bulkInsert(chunks) {
   return modelMap.documentChunksModel.getModel().insertMany(chunks);
 }
 
-async function findBySession(sessionId) {
-  return modelMap.documentChunksModel.getModel().find({ sessionId }).lean();
+async function findBySession(sessionId, filter = {}) {
+  return modelMap.documentChunksModel.getModel().find({ sessionId, ...filter }).lean();
 }
 
-async function findByDocument(documentId) {
-  return modelMap.documentChunksModel.getModel().find({ documentId }).lean();
+async function findByDocument(documentId, filter = {}) {
+  return modelMap.documentChunksModel.getModel().find({ documentId, ...filter }).lean();
 }
 
-async function deleteBySession(sessionId) {
-  return modelMap.documentChunksModel.getModel().deleteMany({ sessionId });
+async function deleteBySession(sessionId, filter = {}) {
+  return modelMap.documentChunksModel.getModel().deleteMany({ sessionId, ...filter });
 }
 
-async function deleteByDocument(documentId) {
-  return modelMap.documentChunksModel.getModel().deleteMany({ documentId });
+async function deleteByDocument(documentId, filter = {}) {
+  return modelMap.documentChunksModel.getModel().deleteMany({ documentId, ...filter });
 }
 
 export const documentChunks = {

@@ -1,14 +1,60 @@
 const BASE_URL = '/v1';
 
+// Token Management
+export function getAuthToken() {
+  return localStorage.getItem('token');
+}
+
+export function setAuthToken(token) {
+  if (token) {
+    localStorage.setItem('token', token);
+  } else {
+    localStorage.removeItem('token');
+  }
+}
+
+export function getUser() {
+  const user = localStorage.getItem('user');
+  try {
+    return user ? JSON.parse(user) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setUser(user) {
+  if (user) {
+    localStorage.setItem('user', JSON.stringify(user));
+  } else {
+    localStorage.removeItem('user');
+  }
+}
+
+export function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+}
+
 export async function fetchApi(endpoint, options = {}) {
   const url = `${BASE_URL}${endpoint}`;
+  const token = getAuthToken();
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
+
+  if (response.status === 401) {
+    // If unauthorized, clear storage
+    logout();
+    window.dispatchEvent(new Event('auth:unauthorized'));
+  }
 
   if (!response.ok) {
     let errorData = {};
@@ -24,9 +70,44 @@ export async function fetchApi(endpoint, options = {}) {
   return response.json();
 }
 
+// Auth APIs
+export async function loginUser(email, password) {
+  const res = await fetchApi('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  const data = res.response || res.data;
+  if (data?.token) {
+    setAuthToken(data.token);
+    setUser(data.user);
+  }
+  return data;
+}
+
+export async function signupUser(name, email, password) {
+  const res = await fetchApi('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ name, email, password }),
+  });
+  const data = res.response || res.data;
+  if (data?.token) {
+    setAuthToken(data.token);
+    setUser(data.user);
+  }
+  return data;
+}
+
+export async function getProfile() {
+  return fetchApi('/auth/me');
+}
+
 // Sessions APIs
 export async function getSessions(status = 'ACTIVE') {
   return fetchApi(`/sessions?status=${status}`);
+}
+
+export async function getSessionById(sessionId) {
+  return fetchApi(`/sessions/${sessionId}`);
 }
 
 export async function createSession(data) {
@@ -57,11 +138,20 @@ export async function getSessionDocuments(sessionId) {
 export async function uploadDocuments(sessionId, files) {
   const formData = new FormData();
   files.forEach((file) => formData.append('files', file));
+  const token = getAuthToken();
 
   const response = await fetch(`${BASE_URL}/sessions/${sessionId}/documents`, {
     method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: formData,
   });
+
+  if (response.status === 401) {
+    logout();
+    window.dispatchEvent(new Event('auth:unauthorized'));
+  }
 
   if (!response.ok) {
     let errorData = {};
@@ -93,11 +183,21 @@ export async function getSessionMessages(sessionId) {
 
 export async function streamQuery(sessionId, prompt, { onToken, onCitations, onError, onComplete }) {
   try {
+    const token = getAuthToken();
     const response = await fetch(`${BASE_URL}/sessions/${sessionId}/query`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ prompt, stream: true }),
     });
+
+    if (response.status === 401) {
+      logout();
+      window.dispatchEvent(new Event('auth:unauthorized'));
+      throw new Error('Unauthorized. Please login again.');
+    }
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
@@ -136,7 +236,6 @@ export async function streamQuery(sessionId, prompt, { onToken, onCitations, onE
             onError(new Error(parsed.message || 'Stream error'));
           }
         } catch {
-          // not json, or raw text chunk
           if (onToken) onToken(dataStr);
         }
       }

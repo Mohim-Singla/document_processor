@@ -6,8 +6,16 @@ import { geminiService } from '../service/geminiService.js';
 
 export async function listDocuments(req, res) {
   try {
-    const { id } = req.params;
-    const documents = await mongoRepositories.documents.fetchAll({ sessionId: id });
+    const { id: sessionId } = req.params;
+    const userId = req.user.userId;
+
+    // IDOR Check: Ensure parent session belongs to this user
+    const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
+    if (!session) {
+      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+    }
+
+    const documents = await mongoRepositories.documents.fetchAll({ sessionId, userId });
     return res.success('Documents fetched successfully', documents);
   } catch (error) {
     console.error('Error fetching documents:', error);
@@ -18,10 +26,17 @@ export async function listDocuments(req, res) {
 export async function uploadDocuments(req, res) {
   try {
     const { id: sessionId } = req.params;
+    const userId = req.user.userId;
     const files = req.files || [];
 
     if (files.length === 0) {
       return res.error('No files uploaded', 'Validation Error', 400);
+    }
+
+    // IDOR Check: Ensure target session belongs to the user
+    const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
+    if (!session) {
+      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
     }
 
     const createdDocs = [];
@@ -37,10 +52,11 @@ export async function uploadDocuments(req, res) {
         mimeType: file.mimetype,
       });
 
-      // 2. Insert record into MongoDB documents collection
+      // 2. Insert record into MongoDB documents collection with owner userId
       const docRecord = await mongoRepositories.documents.create({
         documentId,
         sessionId,
+        userId,
         fileName: file.originalname,
         mimeType: file.mimetype,
         fileSize: file.size,
@@ -62,8 +78,9 @@ export async function uploadDocuments(req, res) {
             sessionId,
           });
 
-          // Compute embeddings for all chunks
+          // Attach owner userId to each chunk and compute embedding
           for (const chunk of chunks) {
+            chunk.userId = userId;
             chunk.embedding = await geminiService.getEmbedding(chunk.content);
           }
 
@@ -72,7 +89,7 @@ export async function uploadDocuments(req, res) {
           }
 
           await mongoRepositories.documents.update(
-            { documentId },
+            { documentId, userId },
             { status: 'READY', pageCount }
           );
 
@@ -81,7 +98,7 @@ export async function uploadDocuments(req, res) {
         } catch (err) {
           console.error(`[Ingestion Error] doc ${documentId}:`, err);
           await mongoRepositories.documents.update(
-            { documentId },
+            { documentId, userId },
             { status: 'FAILED', errorMessage: err.message }
           );
         }
@@ -98,10 +115,13 @@ export async function uploadDocuments(req, res) {
 export async function getPreviewUrl(req, res) {
   try {
     const { docId } = req.params;
-    const document = await mongoRepositories.documents.fetchOne({ documentId: docId });
+    const userId = req.user.userId;
+
+    // IDOR Check: Ensure document belongs to this user
+    const document = await mongoRepositories.documents.fetchOne({ documentId: docId, userId });
 
     if (!document) {
-      return res.error('Document not found', 'Not Found', 404);
+      return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
     }
 
     const url = await s3Service.getPresignedDownloadUrl({ key: document.s3Key });
@@ -115,14 +135,19 @@ export async function getPreviewUrl(req, res) {
 export async function deleteDocument(req, res) {
   try {
     const { id: sessionId, docId } = req.params;
-    const document = await mongoRepositories.documents.fetchOne({ documentId: docId });
+    const userId = req.user.userId;
 
-    if (document) {
-      await s3Service.deleteFromS3({ key: document.s3Key }).catch(() => {});
-      await mongoRepositories.documentChunks.deleteByDocument(docId);
-      await mongoRepositories.documents.destroy({ documentId: docId });
-      await mongoRepositories.sessions.incrementDocCount(sessionId, -1);
+    // IDOR Check: Ensure document belongs to this user and session
+    const document = await mongoRepositories.documents.fetchOne({ documentId: docId, sessionId, userId });
+
+    if (!document) {
+      return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
     }
+
+    await s3Service.deleteFromS3({ key: document.s3Key }).catch(() => {});
+    await mongoRepositories.documentChunks.deleteByDocument(docId, { userId });
+    await mongoRepositories.documents.destroy({ documentId: docId, userId });
+    await mongoRepositories.sessions.incrementDocCount(sessionId, -1);
 
     return res.success('Document deleted successfully');
   } catch (error) {

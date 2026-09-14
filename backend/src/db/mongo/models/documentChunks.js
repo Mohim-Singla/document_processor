@@ -4,6 +4,7 @@ const schema = new mongoose.Schema({
   chunkId: { type: String, required: true, unique: true },
   documentId: { type: String, required: true, index: true },
   sessionId: { type: String, required: true, index: true },
+  userId: { type: String, default: null, index: true },
   pageNumber: { type: Number, default: 1 },
   chunkIndex: { type: Number, required: true },
   content: { type: String, required: true },

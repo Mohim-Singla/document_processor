@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Archive, CheckCircle, FolderOpen, RefreshCw, AlertCircle } from 'lucide-react';
+import { Plus, Search, Archive, CheckCircle, FolderOpen, RefreshCw, AlertCircle, LogOut, User } from 'lucide-react';
 import SessionCard from '../components/dashboard/SessionCard';
 import CreateSessionModal from '../components/dashboard/CreateSessionModal';
 import ConfirmModal from '../components/common/ConfirmModal';
-import { getSessions, createSession, updateSession, deleteSession } from '../services/api';
+import { getSessions, createSession, updateSession, deleteSession, getUser } from '../services/api';
 
-export default function DashboardPage({ onSelectSession }) {
+export default function DashboardPage({ onSelectSession, onLogout }) {
   const [sessions, setSessions] = useState([]);
   const [filter, setFilter] = useState('ACTIVE');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Confirmation modal state
   const [deleteTargetSessionId, setDeleteTargetSessionId] = useState(null);
+  const currentUser = getUser();
 
   const loadSessions = async () => {
     try {
@@ -94,13 +97,32 @@ export default function DashboardPage({ onSelectSession }) {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Create New Session
-        </button>
+        <div className="flex items-center gap-3">
+          {currentUser && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+              <User className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="font-medium">{currentUser.name || currentUser.email}</span>
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Create New Session
+          </button>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              title="Sign Out"
+              className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-red-400 transition"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (

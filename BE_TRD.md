@@ -6,12 +6,13 @@
 ## 1. Executive Summary & System Scope
 
 The Backend of the **Document Intelligence & Query System** is an asynchronous, dual-persistence Node.js service (Express.js, ES Modules) responsible for:
-1. **Workspace & Session Orchestration**: CRUD operations, archiving, and state management for user sessions in **MongoDB**.
-2. **Secure Cloud File Ingestion**: Receiving multi-format documents (PDF, DOCX, TXT, images) and storing originals in **AWS S3** (`ap-south-1`).
-3. **Document Extraction & Processing Pipeline**: Parsing native text via `pdf2json` (with safe UTF-8/URI decoding) and `mammoth` (DOCX), structural extraction (pages, sections), and chunking.
-4. **Vector Embedding & Persistence**: Computing vector embeddings via **Google Gemini Embedding API** (`gemini-embedding-001`, 3072-dimensional) and storing high-dimensional vectors in **MongoDB**.
-5. **RAG & Conversational Q&A**: Performing cosine semantic retrieval, context window assembly, and token-by-token streaming responses with source citations via **Google Gemini** (`gemini-3.6-flash`).
-6. **User Account Persistence**: Maintaining core user accounts and credentials in **MySQL** (Sequelize).
+1. **Authentication & IDOR Protection**: User registration/login with email and password via bcrypt + JWT. Middleware-level Bearer token verification with decrypted `req.user` attached to all requests. Strict owner `userId` scoping across all database operations to prevent IDOR attacks.
+2. **Workspace & Session Orchestration**: CRUD operations, archiving, and state management for user sessions in **MongoDB** (`sessions`). Session retrieval by ID (`GET /v1/sessions/:id`) for page reload persistence.
+3. **Secure Cloud File Ingestion**: Receiving multi-format documents (PDF, DOCX, TXT, images) and storing raw originals in **AWS S3** (`ap-south-1`).
+4. **Document Extraction & Processing Pipeline**: Parsing native text via `pdf2json` (with safe URI decoding) and `mammoth` (DOCX), structural extraction (pages, sections), and chunking.
+5. **Vector Embedding & Persistence**: Computing vector embeddings via **Google Gemini Embedding API** (`gemini-embedding-001`, 3072-dimensional) and storing high-dimensional vectors in **MongoDB** (`document_chunks`), stamped with `userId`.
+6. **RAG & Conversational Q&A**: Performing cosine semantic retrieval scoped by `userId`, context window assembly, and token-by-token streaming responses with source citations via **Google Gemini** (`gemini-3.6-flash`).
+7. **User Account Persistence**: Maintaining core user accounts and credentials in **MySQL** (`users` table, Sequelize).
 
 ---
 
@@ -20,13 +21,14 @@ The Backend of the **Document Intelligence & Query System** is an asynchronous, 
 | Concern / Layer | Technology / Library | Role & Justification |
 | :--- | :--- | :--- |
 | **Runtime & Framework** | Node.js (ESM) + Express.js (`v4.21.1`) | High-concurrency event-driven API server |
-| **Document, Session & Vector Store** | MongoDB + Mongoose (`v8.8.1`) | Sessions, documents metadata, semi-structured chunks, embeddings, and chat history with auto collection creation |
+| **Authentication** | `jsonwebtoken`, `bcryptjs` | JWT Bearer token issuance & validation, password hashing with salt 10 |
+| **Document, Session & Vector Store** | MongoDB + Mongoose (`v8.8.1`) | Sessions, documents, chunks, embeddings, and chat history with auto collection creation |
 | **User Persistence** | MySQL 8.x + Sequelize ORM (`v6.37.5`) | Transactional persistence strictly for `users` |
 | **Cloud File Storage** | AWS S3 (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`) | Scalable, encrypted raw document object store (`ap-south-1`) |
 | **File Upload Handling** | `multer` (memory storage) | Multipart form-data handling with MIME-type and size guards |
 | **AI & LLM Services** | Google Gemini API (`@google/genai` v2) | Embedding generation (`gemini-embedding-001`) & streaming generation (`gemini-3.6-flash`) |
 | **Document Parsers** | `pdf2json`, `mammoth` | Page-level PDF text extraction and DOCX parsing with safe URI decoding |
-| **Validation & Security** | `joi`, `jsonwebtoken`, `bcryptjs`, `cors` | Schema validation and auth middleware |
+| **Validation & Security** | `joi`, `cors` | Joi request schema validation and CORS configuration |
 
 ---
 
@@ -41,14 +43,15 @@ erDiagram
 
     USERS {
         string userId PK "MySQL"
-        string email
+        string email "Unique"
         string name
-        string password
+        string password "Hashed bcrypt"
+        boolean isEnabled
     }
 
     SESSIONS {
         string sessionId PK "MongoDB"
-        string userId FK
+        string userId FK "Index, IDOR scoped"
         string title
         string description
         enum status "ACTIVE, ARCHIVED"
@@ -59,7 +62,8 @@ erDiagram
 
     DOCUMENTS {
         string documentId PK "MongoDB"
-        string sessionId FK
+        string sessionId FK "Index"
+        string userId FK "Index, IDOR scoped"
         string fileName
         string mimeType
         bigint fileSize
@@ -76,6 +80,7 @@ erDiagram
         string chunkId PK "MongoDB"
         string documentId FK
         string sessionId FK
+        string userId FK "IDOR scoped"
         int pageNumber
         int chunkIndex
         string content
@@ -86,6 +91,7 @@ erDiagram
     CHAT_MESSAGES {
         string messageId PK "MongoDB"
         string sessionId FK
+        string userId FK "IDOR scoped"
         enum sender "USER, ASSISTANT"
         string content
         array citations
@@ -97,7 +103,7 @@ erDiagram
 
 #### `users`
 - `userId`: `STRING(36)` (Primary Key)
-- `name`: `STRING`
+- `name`: `STRING` (Not Null)
 - `email`: `STRING` (Unique, Not Null)
 - `password`: `STRING` (Hashed)
 - `isEnabled`: `BOOLEAN` (Default: true)
@@ -110,7 +116,7 @@ erDiagram
 ```javascript
 {
   sessionId: { type: String, required: true, unique: true },
-  userId: { type: String, default: null, index: true },
+  userId: { type: String, required: true, index: true }, // Owner userId for IDOR prevention
   title: { type: String, required: true },
   description: { type: String, default: null },
   status: { type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE', index: true },
@@ -123,6 +129,7 @@ erDiagram
 {
   documentId: { type: String, required: true, unique: true },
   sessionId: { type: String, required: true, index: true },
+  userId: { type: String, required: true, index: true }, // Owner userId for IDOR prevention
   fileName: { type: String, required: true },
   mimeType: { type: String, required: true },
   fileSize: { type: Number, required: true },
@@ -140,6 +147,7 @@ erDiagram
   chunkId: { type: String, required: true, unique: true },
   documentId: { type: String, required: true, index: true },
   sessionId: { type: String, required: true, index: true },
+  userId: { type: String, required: true, index: true }, // Scoped to owner
   pageNumber: { type: Number, default: 1 },
   chunkIndex: { type: Number, required: true },
   content: { type: String, required: true },
@@ -147,7 +155,7 @@ erDiagram
     charLength: Number,
     fileName: String
   },
-  embedding: { type: [Number], default: [] } // 3072 dimensions from gemini-embedding-001
+  embedding: { type: [Number], default: [] } // 3072 dims from gemini-embedding-001
 }
 ```
 
@@ -156,6 +164,7 @@ erDiagram
 {
   messageId: { type: String, required: true, unique: true },
   sessionId: { type: String, required: true, index: true },
+  userId: { type: String, required: true, index: true }, // Scoped to owner
   sender: { type: String, enum: ['USER', 'ASSISTANT'], required: true },
   content: { type: String, required: true },
   citations: [
@@ -173,98 +182,65 @@ erDiagram
 
 ---
 
-## 4. Document Ingestion, S3 & Parsing Pipeline
+## 4. Authentication & IDOR Security Architecture
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client as Frontend UI
-    participant API as Express Router
-    participant S3 as AWS S3
-    participant DB_MGO as MongoDB
-    participant Parser as Parsing Engine (pdf2json / mammoth)
-    participant Gemini as Google Gemini API
+    participant Middleware as authenticateToken Middleware
+    participant Controller as Business Controller
+    participant DB as MongoDB / S3
 
-    Client->>API: POST /v1/sessions/:id/documents (Multipart File)
-    API->>S3: Upload raw buffer (sessions/:id/:docId/:filename)
-    API->>DB_MGO: Insert record into `documents` (status = 'PROCESSING')
-    API-->>Client: 202 Accepted { documentId, status: 'PROCESSING' }
-
-    Note over API,Parser: Asynchronous Ingestion Job
-    API->>Parser: Parse file (PDF page-by-page / DOCX)
-    Parser->>Parser: Extract clean text & safe URI decode
-    Parser->>Parser: Split into semantic chunks (~1200 chars, 200 overlap)
-    
-    loop For each chunk
-        Parser->>Gemini: POST gemini-embedding-001
-        Gemini-->>Parser: Vector embeddings [3072 dimensions]
+    Client->>Middleware: Request with Authorization: Bearer <token>
+    alt Token Missing or Invalid
+        Middleware-->>Client: 401 Unauthorized { errorCode: "UNAUTHORIZED" }
+    else Valid Token
+        Middleware->>Middleware: Verify JWT & extract { userId, email, name }
+        Middleware->>Controller: req.user = decodedToken
+        Controller->>DB: Query strictly scoped by { id, userId: req.user.userId }
+        alt Resource not owned by user
+            DB-->>Controller: null
+            Controller-->>Client: 404 / 403 Forbidden { errorCode: "FORBIDDEN" }
+        else Owner Verified
+            DB-->>Controller: Authorized data
+            Controller-->>Client: 200 Success
+        end
     end
-
-    Parser->>DB_MGO: Bulk insert `document_chunks` with embeddings
-    Parser->>DB_MGO: Update document status = 'READY', pageCount = N
-    Parser->>DB_MGO: Increment session documentCount
 ```
 
 ---
 
-## 5. Google Gemini RAG & Streaming Pipeline
+## 5. REST API Specification
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client as Frontend UI
-    participant API as Query Controller
-    participant Gemini as Google Gemini API
-    participant DB_MGO as MongoDB
-    
-    Client->>API: POST /v1/sessions/:id/query { prompt, stream: true }
-    API->>Gemini: Generate prompt embedding (gemini-embedding-001)
-    Gemini-->>API: Query vector [3072 dims]
-    API->>DB_MGO: Find chunks by session & calculate Cosine Similarity
-    DB_MGO-->>API: Top K most relevant chunks (K=5)
-    
-    API->>API: Formulate System Instruction & Context Excerpts
-    Note over API: Direct model to cite sources: "[1] Page X"\nPass retrieved chunks with citation tokens
-    
-    API->>Gemini: Stream Chat Completion (gemini-3.6-flash)
-    API-->>Client: HTTP 200 (Transfer-Encoding: chunked / SSE)
-    
-    loop Stream response chunks
-        Gemini-->>API: Token chunks
-        API-->>Client: data: {"type": "token", "content": "..."}
-    end
-    
-    API-->>Client: data: {"type": "citations", "citations": [...]}
-    API-->>Client: data: [DONE]
-    
-    API->>DB_MGO: Persist User question & Assistant answer with citations
-```
+### 5.1. Authentication Endpoints (Public)
+- `POST /v1/auth/signup`: Register user with `{ name, email, password }`.
+- `POST /v1/auth/login`: Authenticate with `{ email, password }` and return JWT token.
+- `GET /v1/auth/me`: Get authenticated user profile (`authenticateToken`).
 
----
+### 5.2. Sessions API (Protected with `authenticateToken`)
+- `GET /v1/sessions`: List sessions for authenticated user (`where: { userId }`).
+- `GET /v1/sessions/:id`: Fetch single session by ID scoped to `userId` (enables reload recovery).
+- `POST /v1/sessions`: Create new session stamped with `req.user.userId`.
+- `PATCH /v1/sessions/:id`: Update session title or status (`where: { sessionId, userId }`).
+- `DELETE /v1/sessions/:id`: Cascaded deletion of S3 objects, MongoDB session, documents, chunks, and chat history (`where: { sessionId, userId }`).
 
-## 6. REST API Specification
+### 5.3. Documents API (Protected with `authenticateToken`)
+- `POST /v1/sessions/:id/documents`: Multipart upload (`files[]`). Verifies session ownership, uploads to S3, stamps `userId` on documents and chunks.
+- `GET /v1/sessions/:id/documents`: List documents belonging to session (`where: { sessionId, userId }`).
+- `GET /v1/sessions/:id/documents/:docId/preview`: Generate presigned AWS S3 `GetObject` URL (`where: { documentId, userId }`).
+- `DELETE /v1/sessions/:id/documents/:docId`: Remove document from MongoDB, delete S3 object, and clear associated chunks (`where: { documentId, sessionId, userId }`).
 
-### 6.1. Sessions API
-- `GET /v1/sessions`: List sessions for user. Query params: `status` (`ACTIVE` | `ARCHIVED`).
-- `POST /v1/sessions`: Create new session. Body: `{ "title": "...", "description": "..." }`.
-- `PATCH /v1/sessions/:id`: Update session title or status (`status: "ARCHIVED"` / `"ACTIVE"`).
-- `DELETE /v1/sessions/:id`: Cascaded deletion of S3 objects, MongoDB session, documents, chunks, and chat history.
-
-### 6.2. Documents API
-- `POST /v1/sessions/:id/documents`: Multipart upload (`files[]`). Uploads to S3, registers in MongoDB, and triggers async parsing + embedding.
-- `GET /v1/sessions/:id/documents`: List documents belonging to session.
-- `GET /v1/sessions/:id/documents/:docId/preview`: Generate presigned AWS S3 `GetObject` URL for document preview.
-- `DELETE /v1/sessions/:id/documents/:docId`: Remove document from MongoDB, delete S3 object, and clear associated chunks.
-
-### 6.3. Conversational Query & Chat API
+### 5.4. Conversational Query & Chat API (Protected with `authenticateToken`)
 - `POST /v1/sessions/:id/query`: Ask question over session documents.
-  - Body: `{ "prompt": "What are the liabilities?", "stream": true }`.
-  - Response: Server-Sent Events (`text/event-stream`) streaming answer tokens followed by citation references.
-- `GET /v1/sessions/:id/messages`: Retrieve chat message history.
+  - Body: `{ "prompt": "...", "stream": true }`.
+  - Vectors retrieved from MongoDB strictly scoped to `{ sessionId, userId }`.
+  - Streams answer tokens followed by citation references via Server-Sent Events.
+- `GET /v1/sessions/:id/messages`: Retrieve chat message history (`where: { sessionId, userId }`).
 
 ---
 
-## 7. Cloud & Configuration Variables (`.env`)
+## 6. Cloud & Configuration Variables (`.env`)
 
 ```ini
 ENV=local
@@ -293,4 +269,8 @@ AWS_REGION=ap-south-1
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_S3_BUCKET_NAME=s3-document-processor
+
+# Authentication
+JWT_SECRET=document_processor_secret_jwt_key_2026_super_secure
+JWT_EXPIRES_IN=7d
 ```

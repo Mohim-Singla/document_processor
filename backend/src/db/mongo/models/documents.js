@@ -4,6 +4,7 @@ const schema = new mongoose.Schema(
   {
     documentId: { type: String, required: true, unique: true },
     sessionId: { type: String, required: true, index: true },
+    userId: { type: String, default: null, index: true },
     fileName: { type: String, required: true },
     mimeType: { type: String, required: true },
     fileSize: { type: Number, required: true },

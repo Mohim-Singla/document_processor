@@ -1,24 +1,35 @@
 import express from 'express';
 import multer from 'multer';
-import { sessionController, documentController, queryController } from '../../controller/index.js';
+import { sessionController, documentController, queryController, authController } from '../../controller/index.js';
+import { authenticateToken } from '../../middleware/auth.js';
+import { validateRequest } from '../../middleware/requestValidator.js';
+import { authSchema } from '../../apiValidations/auth.js';
 
 const router = new express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Session Routes
-router.get('/sessions', sessionController.listSessions);
-router.post('/sessions', sessionController.createSession);
-router.patch('/sessions/:id', sessionController.updateSession);
-router.delete('/sessions/:id', sessionController.deleteSession);
+// Public Auth Endpoints
+router.post('/auth/signup', validateRequest(authSchema.signup.body), authController.signup);
+router.post('/auth/login', validateRequest(authSchema.login.body), authController.login);
 
-// Document Routes
-router.get('/sessions/:id/documents', documentController.listDocuments);
-router.post('/sessions/:id/documents', upload.array('files'), documentController.uploadDocuments);
-router.get('/sessions/:id/documents/:docId/preview', documentController.getPreviewUrl);
-router.delete('/sessions/:id/documents/:docId', documentController.deleteDocument);
+// Protected User Profile
+router.get('/auth/me', authenticateToken, authController.getCurrentUser);
 
-// Query & Chat Routes
-router.post('/sessions/:id/query', queryController.querySession);
-router.get('/sessions/:id/messages', queryController.getMessages);
+// Protected Session Endpoints (validated with Bearer token at middleware level)
+router.get('/sessions', authenticateToken, sessionController.listSessions);
+router.get('/sessions/:id', authenticateToken, sessionController.getSessionById);
+router.post('/sessions', authenticateToken, sessionController.createSession);
+router.patch('/sessions/:id', authenticateToken, sessionController.updateSession);
+router.delete('/sessions/:id', authenticateToken, sessionController.deleteSession);
+
+// Protected Document Endpoints
+router.get('/sessions/:id/documents', authenticateToken, documentController.listDocuments);
+router.post('/sessions/:id/documents', authenticateToken, upload.array('files'), documentController.uploadDocuments);
+router.get('/sessions/:id/documents/:docId/preview', authenticateToken, documentController.getPreviewUrl);
+router.delete('/sessions/:id/documents/:docId', authenticateToken, documentController.deleteDocument);
+
+// Protected Query & Chat Endpoints
+router.post('/sessions/:id/query', authenticateToken, queryController.querySession);
+router.get('/sessions/:id/messages', authenticateToken, queryController.getMessages);
 
 export const v1 = router;

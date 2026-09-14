@@ -4,16 +4,16 @@ async function create(messageData) {
   return modelMap.chatMessagesModel.getModel().create(messageData);
 }
 
-async function findBySession(sessionId, limit = 50) {
+async function findBySession(sessionId, filter = {}, limit = 50) {
   return modelMap.chatMessagesModel.getModel()
-    .find({ sessionId })
+    .find({ sessionId, ...filter })
     .sort({ createdAt: 1 })
     .limit(limit)
     .lean();
 }
 
-async function deleteBySession(sessionId) {
-  return modelMap.chatMessagesModel.getModel().deleteMany({ sessionId });
+async function deleteBySession(sessionId, filter = {}) {
+  return modelMap.chatMessagesModel.getModel().deleteMany({ sessionId, ...filter });
 }
 
 export const chatMessages = {

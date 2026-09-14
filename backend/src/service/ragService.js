@@ -16,11 +16,16 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 /**
- * Searches top K chunks for a session given a query
+ * Searches top K chunks for a session given a query, scoped by owner userId to prevent IDOR
  */
-export async function retrieveRelevantChunks({ sessionId, query, topK = 5 }) {
-  // Fetch all chunks for this session from MongoDB
-  const allChunks = await mongoRepositories.documentChunks.findBySession(sessionId);
+export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 5 }) {
+  const filter = {};
+  if (userId) {
+    filter.userId = userId;
+  }
+
+  // Fetch only chunks owned by this user for this session
+  const allChunks = await mongoRepositories.documentChunks.findBySession(sessionId, filter);
   if (!allChunks || allChunks.length === 0) {
     return [];
   }
@@ -34,7 +39,6 @@ export async function retrieveRelevantChunks({ sessionId, query, topK = 5 }) {
     if (chunk.embedding && chunk.embedding.length > 0) {
       score = cosineSimilarity(queryEmbedding, chunk.embedding);
     } else {
-      // Keyword fallback match if embeddings not populated
       const lowerQuery = query.toLowerCase();
       const lowerContent = chunk.content.toLowerCase();
       if (lowerContent.includes(lowerQuery)) score = 0.8;

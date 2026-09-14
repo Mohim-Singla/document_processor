@@ -6,15 +6,23 @@ import { geminiService } from '../service/geminiService.js';
 export async function querySession(req, res) {
   try {
     const { id: sessionId } = req.params;
+    const userId = req.user.userId;
     const { prompt, stream = true } = req.body;
 
     if (!prompt) {
       return res.error('Prompt is required', 'Validation Error', 400);
     }
 
-    // 1. Retrieve top matching chunks from MongoDB
+    // IDOR Check: Ensure session belongs to this user
+    const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
+    if (!session) {
+      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+    }
+
+    // 1. Retrieve top matching chunks from MongoDB scoped strictly by userId
     const relevantChunks = await ragService.retrieveRelevantChunks({
       sessionId,
+      userId,
       query: prompt,
       topK: 5,
     });
@@ -27,10 +35,11 @@ export async function querySession(req, res) {
       score: c.score,
     }));
 
-    // Record user message
+    // Record user message with owner userId
     await mongoRepositories.chatMessages.create({
       messageId: uuidv4(),
       sessionId,
+      userId,
       sender: 'USER',
       content: prompt,
       citations: [],
@@ -59,10 +68,11 @@ export async function querySession(req, res) {
       res.write('data: [DONE]\n\n');
       res.end();
 
-      // Record assistant message with citations
+      // Record assistant message with citations and owner userId
       await mongoRepositories.chatMessages.create({
         messageId: uuidv4(),
         sessionId,
+        userId,
         sender: 'ASSISTANT',
         content: fullAssistantReply,
         citations,
@@ -80,6 +90,7 @@ export async function querySession(req, res) {
       await mongoRepositories.chatMessages.create({
         messageId: uuidv4(),
         sessionId,
+        userId,
         sender: 'ASSISTANT',
         content: fullAssistantReply,
         citations,
@@ -103,7 +114,15 @@ export async function querySession(req, res) {
 export async function getMessages(req, res) {
   try {
     const { id: sessionId } = req.params;
-    const messages = await mongoRepositories.chatMessages.findBySession(sessionId);
+    const userId = req.user.userId;
+
+    // IDOR Check: Ensure session belongs to this user
+    const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
+    if (!session) {
+      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+    }
+
+    const messages = await mongoRepositories.chatMessages.findBySession(sessionId, { userId });
     return res.success('Messages retrieved successfully', messages);
   } catch (error) {
     console.error('Error fetching messages:', error);

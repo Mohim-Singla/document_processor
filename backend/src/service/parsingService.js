@@ -1,22 +1,25 @@
 import PDFParser from 'pdf2json';
 import mammoth from 'mammoth';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../utils/logger.js';
+
+const CONTEXT = 'parsingService';
 
 /**
- * Safely decodes text from pdf2json without crashing on malformed URI sequences
+ * Safely decodes URI-encoded text from pdf2json without throwing on unescaped '%' signs
  */
-function safeDecodeText(str) {
-  if (!str) return '';
+function safeDecodeText(text) {
+  if (!text) return '';
   try {
-    return decodeURIComponent(str);
+    return decodeURIComponent(text);
   } catch {
-    try {
-      // Replace isolated '%' not followed by two hex digits
-      return decodeURIComponent(str.replace(/%(?![0-9A-Fa-f]{2})/g, '%25'));
-    } catch {
-      // Unescape or return raw string if un-decodable
-      return unescape(str);
-    }
+    return text.replace(/%([0-9A-Fa-f]{2})/g, (match, hex) => {
+      try {
+        return String.fromCharCode(parseInt(hex, 16));
+      } catch {
+        return match;
+      }
+    });
   }
 }
 
@@ -106,10 +109,14 @@ export function chunkText(text, { chunkSize = 1200, overlap = 200 } = {}) {
  * Parses file buffer based on mimeType / extension and returns extracted chunks
  */
 export async function parseDocument({ buffer, fileName, mimeType, documentId, sessionId }) {
+  const SUB_CONTEXT = parseDocument.name;
+  logger.info('Starting document parsing', CONTEXT, SUB_CONTEXT, { fileName, mimeType, documentId });
+
   let pages = [];
   let totalPageCount = 1;
 
   if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {
+    logger.info('Parsing PDF file with pdf2json', CONTEXT, SUB_CONTEXT, { fileName });
     const parsed = await extractPdfText(buffer);
     totalPageCount = parsed.pageCount;
     pages = parsed.pages;
@@ -117,10 +124,11 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     fileName.endsWith('.docx')
   ) {
+    logger.info('Parsing DOCX document with mammoth', CONTEXT, SUB_CONTEXT, { fileName });
     const result = await mammoth.extractRawText({ buffer });
     pages.push({ pageNumber: 1, text: result.value });
   } else {
-    // Plain text or fallback
+    logger.info('Parsing plaintext or fallback document', CONTEXT, SUB_CONTEXT, { fileName });
     const text = buffer.toString('utf-8');
     pages.push({ pageNumber: 1, text });
   }
@@ -147,6 +155,12 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
     }
   }
 
+  logger.info('Document parsing completed', CONTEXT, SUB_CONTEXT, {
+    fileName,
+    totalPageCount,
+    totalChunks: documentChunks.length,
+  });
+
   return {
     pageCount: totalPageCount,
     chunks: documentChunks,
@@ -154,6 +168,6 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
 }
 
 export const parsingService = {
-  parseDocument,
   chunkText,
+  parseDocument,
 };

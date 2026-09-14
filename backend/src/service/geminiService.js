@@ -1,11 +1,14 @@
 import { GoogleGenAI } from '@google/genai';
+import { logger } from '../utils/logger.js';
 
+const CONTEXT = 'geminiService';
 let aiInstance = null;
 
 function getAI() {
   if (!aiInstance) {
     const apiKey = process.env.GEMINI_API_KEY || '';
     if (!apiKey && process.env.ENV !== 'test') {
+      logger.critical('GEMINI_API_KEY is missing in environment', CONTEXT, getAI.name);
       throw new Error('GEMINI_API_KEY is missing in environment.');
     }
     aiInstance = new GoogleGenAI({ apiKey });
@@ -17,13 +20,17 @@ function getAI() {
  * Computes vector embedding for a given text snippet using Google GenAI embedding models
  */
 export async function getEmbedding(text) {
+  const SUB_CONTEXT = getEmbedding.name;
   // Mock only runs when ENV === 'test'
   if (process.env.ENV === 'test') {
+    logger.debug('Returning test mock embedding vector', CONTEXT, SUB_CONTEXT, { textLength: text.length });
     return new Array(768).fill(0).map((_, i) => Math.sin(i + text.length) * 0.05);
   }
 
   const ai = getAI();
   const model = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
+
+  logger.info('Generating embedding via Gemini API', CONTEXT, SUB_CONTEXT, { model, textLength: text.length });
 
   const response = await ai.models.embedContent({
     model,
@@ -32,11 +39,15 @@ export async function getEmbedding(text) {
 
   // Extract embedding values from SDK response
   if (response.embeddings && response.embeddings[0]?.values) {
+    logger.info('Embedding generated successfully', CONTEXT, SUB_CONTEXT, { dimensions: response.embeddings[0].values.length });
     return response.embeddings[0].values;
   }
   if (response.embedding?.values) {
+    logger.info('Embedding generated successfully', CONTEXT, SUB_CONTEXT, { dimensions: response.embedding.values.length });
     return response.embedding.values;
   }
+
+  logger.warn('Empty embedding response received', CONTEXT, SUB_CONTEXT);
   return [];
 }
 
@@ -44,6 +55,9 @@ export async function getEmbedding(text) {
  * Streams conversational RAG answer given user prompt and relevant context chunks
  */
 export async function* streamRagCompletion({ prompt, contextChunks = [] }) {
+  const SUB_CONTEXT = streamRagCompletion.name;
+  logger.info('Starting streaming RAG generation with Gemini', CONTEXT, SUB_CONTEXT, { chunkCount: contextChunks.length, promptLength: prompt.length });
+
   // Mock only runs when ENV === 'test'
   if (process.env.ENV === 'test') {
     const fallbackText = `[Test Mode] Answer for: ${prompt} based on ${contextChunks.length} documents. [1]`;
@@ -76,6 +90,8 @@ Rules:
   const model = process.env.GEMINI_LLM_MODEL || 'gemini-3.6-flash';
   const fullUserPrompt = `Context Documents:\n${formattedContext}\n\nUser Question:\n${prompt}`;
 
+  logger.info('Invoking Gemini generateContentStream', CONTEXT, SUB_CONTEXT, { model });
+
   const streamResult = await ai.models.generateContentStream({
     model,
     contents: [
@@ -94,6 +110,8 @@ Rules:
       yield text;
     }
   }
+
+  logger.info('Gemini stream generation completed', CONTEXT, SUB_CONTEXT);
 }
 
 export const geminiService = {

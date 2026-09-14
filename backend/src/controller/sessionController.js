@@ -1,11 +1,17 @@
 import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { s3Service } from '../service/s3Service.js';
+import { logger } from '../utils/logger.js';
+
+const CONTEXT = 'sessionController';
 
 export async function listSessions(req, res) {
+  const SUB_CONTEXT = listSessions.name;
   try {
     const { status = 'ACTIVE' } = req.query;
     const userId = req.user.userId;
+
+    logger.info('Listing sessions for user', CONTEXT, SUB_CONTEXT, { userId, status });
 
     // Strict owner scoping: Only fetch sessions owned by this user
     const filter = { userId };
@@ -14,37 +20,47 @@ export async function listSessions(req, res) {
     }
 
     const sessions = await mongoRepositories.sessions.fetchAll(filter);
+    logger.info('Fetched sessions successfully', CONTEXT, SUB_CONTEXT, { count: sessions.length });
     return res.success('Sessions fetched successfully', sessions);
   } catch (error) {
-    console.error('Error fetching sessions:', error);
+    logger.error('Error fetching sessions', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to fetch sessions', error.message, 500);
   }
 }
 
 export async function getSessionById(req, res) {
+  const SUB_CONTEXT = getSessionById.name;
   try {
     const { id } = req.params;
     const userId = req.user.userId;
 
+    logger.info('Fetching session by ID', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
+
     // IDOR Check: Ensure session exists and belongs to this user
     const session = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!session) {
+      logger.warn('Session not found or access denied', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
       return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
     }
 
+    logger.info('Session fetched successfully', CONTEXT, SUB_CONTEXT, { sessionId: id });
     return res.success('Session fetched successfully', session);
   } catch (error) {
-    console.error('Error fetching session by id:', error);
+    logger.error('Error fetching session by id', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to fetch session', error.message, 500);
   }
 }
 
 export async function createSession(req, res) {
+  const SUB_CONTEXT = createSession.name;
   try {
     const { title, description } = req.body;
     const userId = req.user.userId;
 
+    logger.info('Creating new session', CONTEXT, SUB_CONTEXT, { title, userId });
+
     if (!title) {
+      logger.warn('Creation failed: session title is required', CONTEXT, SUB_CONTEXT);
       return res.error('Session title is required', 'Validation Error', 400);
     }
 
@@ -58,22 +74,27 @@ export async function createSession(req, res) {
       documentCount: 0,
     });
 
+    logger.info('Session created successfully', CONTEXT, SUB_CONTEXT, { sessionId, title });
     return res.success('Session created successfully', newSession, 201);
   } catch (error) {
-    console.error('Error creating session:', error);
+    logger.error('Error creating session', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to create session', error.message, 500);
   }
 }
 
 export async function updateSession(req, res) {
+  const SUB_CONTEXT = updateSession.name;
   try {
     const { id } = req.params;
     const userId = req.user.userId;
     const { title, description, status } = req.body;
 
+    logger.info('Updating session', CONTEXT, SUB_CONTEXT, { sessionId: id, userId, status, title });
+
     // IDOR Check: Ensure session exists and belongs to the authenticated user
     const existing = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!existing) {
+      logger.warn('Session update failed: not found or unauthorized', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
       return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
     }
 
@@ -87,26 +108,32 @@ export async function updateSession(req, res) {
       updateFields
     );
 
+    logger.info('Session updated successfully', CONTEXT, SUB_CONTEXT, { sessionId: id });
     return res.success('Session updated successfully', updated);
   } catch (error) {
-    console.error('Error updating session:', error);
+    logger.error('Error updating session', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to update session', error.message, 500);
   }
 }
 
 export async function deleteSession(req, res) {
+  const SUB_CONTEXT = deleteSession.name;
   try {
     const { id } = req.params;
     const userId = req.user.userId;
 
+    logger.info('Deleting session', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
+
     // IDOR Check: Ensure session belongs to the user
     const session = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!session) {
+      logger.warn('Session delete failed: not found or unauthorized', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
       return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
     }
 
     // 1. Delete all S3 files belonging to this session
     const docs = await mongoRepositories.documents.fetchAll({ sessionId: id, userId });
+    logger.info('Cleaning up S3 files for session', CONTEXT, SUB_CONTEXT, { count: docs.length });
     for (const doc of docs) {
       if (doc.s3Key) {
         await s3Service.deleteFromS3({ key: doc.s3Key }).catch(() => {});
@@ -121,9 +148,10 @@ export async function deleteSession(req, res) {
       mongoRepositories.sessions.destroy({ sessionId: id, userId }),
     ]);
 
+    logger.info('Session and associated documents deleted successfully', CONTEXT, SUB_CONTEXT, { sessionId: id });
     return res.success('Session and associated documents deleted successfully');
   } catch (error) {
-    console.error('Error deleting session:', error);
+    logger.error('Error deleting session', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to delete session', error.message, 500);
   }
 }

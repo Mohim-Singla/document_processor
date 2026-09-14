@@ -2,7 +2,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { mysqlRepositories } from '../db/mysql/repository/index.js';
+import { logger } from '../utils/logger.js';
 
+const CONTEXT = 'authService';
 const JWT_SECRET = process.env.JWT_SECRET || 'document_processor_super_secret_jwt_key_2026';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
@@ -24,11 +26,15 @@ export function verifyToken(token) {
  * Registers a new user
  */
 export async function signup({ name, email, password }) {
+  const SUB_CONTEXT = signup.name;
+  logger.info('Attempting user registration', CONTEXT, SUB_CONTEXT, { email });
+
   const existingUser = await mysqlRepositories.users.fetchOne({
     where: { email: email.toLowerCase().trim() },
   });
 
   if (existingUser) {
+    logger.warn('User already exists with email', CONTEXT, SUB_CONTEXT, { email });
     throw new Error('User with this email already exists.');
   }
 
@@ -43,6 +49,8 @@ export async function signup({ name, email, password }) {
     password: hashedPassword,
     isEnabled: true,
   });
+
+  logger.info('User created in MySQL', CONTEXT, SUB_CONTEXT, { userId, email });
 
   const token = generateToken({
     userId: user.userId,
@@ -64,22 +72,30 @@ export async function signup({ name, email, password }) {
  * Authenticates user credentials and returns JWT
  */
 export async function login({ email, password }) {
+  const SUB_CONTEXT = login.name;
+  logger.info('Attempting user login authentication', CONTEXT, SUB_CONTEXT, { email });
+
   const user = await mysqlRepositories.users.fetchOne({
     where: { email: email.toLowerCase().trim() },
   });
 
   if (!user) {
+    logger.warn('User not found during login', CONTEXT, SUB_CONTEXT, { email });
     throw new Error('Invalid email or password.');
   }
 
   if (user.isEnabled === false) {
+    logger.warn('Disabled user attempted to login', CONTEXT, SUB_CONTEXT, { email, userId: user.userId });
     throw new Error('This user account is disabled.');
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
+    logger.warn('Password mismatch during login', CONTEXT, SUB_CONTEXT, { email });
     throw new Error('Invalid email or password.');
   }
+
+  logger.info('User authenticated successfully', CONTEXT, SUB_CONTEXT, { userId: user.userId });
 
   const token = generateToken({
     userId: user.userId,

@@ -1,6 +1,8 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { logger } from '../utils/logger.js';
 
+const CONTEXT = 's3Service';
 const region = process.env.AWS_REGION || 'ap-south-1';
 const bucketName = process.env.AWS_S3_BUCKET_NAME || 's3-document-processor';
 
@@ -20,8 +22,12 @@ function getClient() {
 }
 
 export async function uploadToS3({ key, buffer, mimeType }) {
+  const SUB_CONTEXT = uploadToS3.name;
+  logger.info('Preparing to upload object to S3', CONTEXT, SUB_CONTEXT, { bucketName, key, mimeType, byteLength: buffer?.length });
+
   // Mock code only runs when ENV === 'test'
   if (process.env.ENV === 'test') {
+    logger.debug('Running S3 upload in test mock mode', CONTEXT, SUB_CONTEXT, { key });
     return {
       bucket: bucketName,
       key,
@@ -30,6 +36,7 @@ export async function uploadToS3({ key, buffer, mimeType }) {
   }
 
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    logger.critical('AWS S3 credentials missing in environment', CONTEXT, SUB_CONTEXT);
     throw new Error('AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) are missing in environment.');
   }
 
@@ -42,6 +49,7 @@ export async function uploadToS3({ key, buffer, mimeType }) {
   });
 
   await client.send(command);
+  logger.info('Successfully uploaded object to S3', CONTEXT, SUB_CONTEXT, { bucketName, key });
   return {
     bucket: bucketName,
     key,
@@ -50,12 +58,17 @@ export async function uploadToS3({ key, buffer, mimeType }) {
 }
 
 export async function getPresignedDownloadUrl({ key, expiresInSeconds = 900 }) {
+  const SUB_CONTEXT = getPresignedDownloadUrl.name;
+  logger.info('Generating presigned download URL', CONTEXT, SUB_CONTEXT, { bucketName, key, expiresInSeconds });
+
   // Mock code only runs when ENV === 'test'
   if (process.env.ENV === 'test') {
+    logger.debug('Returning mock presigned URL in test mode', CONTEXT, SUB_CONTEXT, { key });
     return `https://${bucketName}.s3.${region}.amazonaws.com/${key}?mockToken=true`;
   }
 
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    logger.critical('AWS S3 credentials missing in environment', CONTEXT, SUB_CONTEXT);
     throw new Error('AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) are missing in environment.');
   }
 
@@ -65,16 +78,23 @@ export async function getPresignedDownloadUrl({ key, expiresInSeconds = 900 }) {
     Key: key,
   });
 
-  return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+  const url = await getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+  logger.info('Presigned download URL successfully created', CONTEXT, SUB_CONTEXT, { key });
+  return url;
 }
 
 export async function deleteFromS3({ key }) {
+  const SUB_CONTEXT = deleteFromS3.name;
+  logger.info('Deleting object from S3', CONTEXT, SUB_CONTEXT, { bucketName, key });
+
   // Mock code only runs when ENV === 'test'
   if (process.env.ENV === 'test') {
+    logger.debug('Mock deleting S3 object in test mode', CONTEXT, SUB_CONTEXT, { key });
     return true;
   }
 
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    logger.critical('AWS S3 credentials missing in environment', CONTEXT, SUB_CONTEXT);
     throw new Error('AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) are missing in environment.');
   }
 
@@ -85,6 +105,7 @@ export async function deleteFromS3({ key }) {
   });
 
   await client.send(command);
+  logger.info('Successfully deleted object from S3', CONTEXT, SUB_CONTEXT, { bucketName, key });
   return true;
 }
 

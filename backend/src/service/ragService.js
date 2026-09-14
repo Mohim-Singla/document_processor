@@ -1,5 +1,8 @@
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { geminiService } from './geminiService.js';
+import { logger } from '../utils/logger.js';
+
+const CONTEXT = 'ragService';
 
 function cosineSimilarity(vecA, vecB) {
   if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
@@ -19,6 +22,9 @@ function cosineSimilarity(vecA, vecB) {
  * Searches top K chunks for a session given a query, scoped by owner userId to prevent IDOR
  */
 export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 5 }) {
+  const SUB_CONTEXT = retrieveRelevantChunks.name;
+  logger.info('Retrieving relevant chunks for RAG search', CONTEXT, SUB_CONTEXT, { sessionId, userId, topK });
+
   const filter = {};
   if (userId) {
     filter.userId = userId;
@@ -27,6 +33,7 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
   // Fetch only chunks owned by this user for this session
   const allChunks = await mongoRepositories.documentChunks.findBySession(sessionId, filter);
   if (!allChunks || allChunks.length === 0) {
+    logger.warn('No document chunks available for session', CONTEXT, SUB_CONTEXT, { sessionId });
     return [];
   }
 
@@ -53,7 +60,15 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
 
   // Sort descending by score and pick top K
   scoredChunks.sort((a, b) => b.score - a.score);
-  return scoredChunks.slice(0, topK);
+  const selected = scoredChunks.slice(0, topK);
+
+  logger.info('Top relevant chunks scored and selected', CONTEXT, SUB_CONTEXT, {
+    totalEvaluated: allChunks.length,
+    selectedCount: selected.length,
+    topScore: selected[0]?.score,
+  });
+
+  return selected;
 }
 
 export const ragService = {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import DashboardPage from './pages/DashboardPage';
 import SessionWorkspacePage from './pages/SessionWorkspacePage';
 import LoginPage from './pages/LoginPage';
+import SnackbarContainer from './components/SnackbarContainer';
 import { getAuthToken, getUser, logout, getSessionById } from './services/api';
 
 export default function App() {
@@ -136,31 +137,30 @@ export default function App() {
     window.history.replaceState({}, '', '/login');
   };
 
-  if (initializing) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
-        Loading Document Intelligence...
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
-      {activeSession ? (
-        <SessionWorkspacePage
-          session={activeSession}
-          onBack={handleBackToDashboard}
-        />
+    <>
+      <SnackbarContainer />
+      {initializing ? (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
+          Loading Document Intelligence...
+        </div>
+      ) : !user ? (
+        <LoginPage onLoginSuccess={handleLoginSuccess} />
       ) : (
-        <DashboardPage
-          onSelectSession={handleSelectSession}
-          onLogout={handleLogout}
-        />
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
+          {activeSession ? (
+            <SessionWorkspacePage
+              session={activeSession}
+              onBack={handleBackToDashboard}
+            />
+          ) : (
+            <DashboardPage
+              onSelectSession={handleSelectSession}
+              onLogout={handleLogout}
+            />
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 }

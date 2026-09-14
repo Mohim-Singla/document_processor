@@ -1,3 +1,5 @@
+import { showBackendError } from '../components/SnackbarContainer';
+
 const BASE_URL = '/v1';
 
 // Token Management
@@ -45,29 +47,38 @@ export async function fetchApi(endpoint, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
 
-  if (response.status === 401) {
-    // If unauthorized, clear storage
-    logout();
-    window.dispatchEvent(new Event('auth:unauthorized'));
-  }
-
-  if (!response.ok) {
-    let errorData = {};
-    try {
-      errorData = await response.json();
-    } catch {
-      // ignore
+    if (response.status === 401) {
+      // If unauthorized, clear storage
+      logout();
+      window.dispatchEvent(new Event('auth:unauthorized'));
     }
-    const message = errorData.message || `Request failed with status ${response.status}`;
-    throw new Error(message);
-  }
 
-  return response.json();
+    if (!response.ok) {
+      let errorData = {};
+      try {
+        errorData = await response.json();
+      } catch {
+        // ignore
+      }
+      const message = errorData.message || `Request failed with status ${response.status}`;
+      showBackendError(message);
+      throw new Error(message);
+    }
+
+    return response.json();
+  } catch (err) {
+    // If it's a network error (e.g. backend down)
+    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      showBackendError('Unable to connect to backend service. Please check your connection.');
+    }
+    throw err;
+  }
 }
 
 // Auth APIs
@@ -160,7 +171,9 @@ export async function uploadDocuments(sessionId, files) {
     } catch {
       // ignore
     }
-    throw new Error(errorData.message || 'Upload failed');
+    const message = errorData.message || 'Upload failed';
+    showBackendError(message);
+    throw new Error(message);
   }
 
   return response.json();
@@ -196,12 +209,15 @@ export async function streamQuery(sessionId, prompt, { onToken, onCitations, onE
     if (response.status === 401) {
       logout();
       window.dispatchEvent(new Event('auth:unauthorized'));
+      showBackendError('Unauthorized. Please login again.');
       throw new Error('Unauthorized. Please login again.');
     }
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.message || 'Failed to query session');
+      const message = err.message || 'Failed to query session';
+      showBackendError(message);
+      throw new Error(message);
     }
 
     const reader = response.body.getReader();

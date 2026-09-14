@@ -2,24 +2,33 @@ import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { ragService } from '../service/ragService.js';
 import { geminiService } from '../service/geminiService.js';
+import { logger } from '../utils/logger.js';
+
+const CONTEXT = 'queryController';
 
 export async function querySession(req, res) {
+  const SUB_CONTEXT = querySession.name;
   try {
     const { id: sessionId } = req.params;
     const userId = req.user.userId;
     const { prompt, stream = true } = req.body;
 
+    logger.info('Received session query request', CONTEXT, SUB_CONTEXT, { sessionId, userId, stream, promptLength: prompt?.length });
+
     if (!prompt) {
+      logger.warn('Query failed: Prompt is required', CONTEXT, SUB_CONTEXT);
       return res.error('Prompt is required', 'Validation Error', 400);
     }
 
     // IDOR Check: Ensure session belongs to this user
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
+      logger.warn('Session query rejected: unauthorized or not found', CONTEXT, SUB_CONTEXT, { sessionId, userId });
       return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
     }
 
     // 1. Retrieve top matching chunks from MongoDB scoped strictly by userId
+    logger.info('Retrieving relevant chunks for query', CONTEXT, SUB_CONTEXT, { sessionId, userId });
     const relevantChunks = await ragService.retrieveRelevantChunks({
       sessionId,
       userId,
@@ -34,6 +43,8 @@ export async function querySession(req, res) {
       snippet: c.content.slice(0, 300),
       score: c.score,
     }));
+
+    logger.info('Found relevant chunks for context', CONTEXT, SUB_CONTEXT, { chunkCount: relevantChunks.length });
 
     // Record user message with owner userId
     await mongoRepositories.chatMessages.create({
@@ -53,6 +64,7 @@ export async function querySession(req, res) {
 
       let fullAssistantReply = '';
 
+      logger.info('Initiating LLM stream response', CONTEXT, SUB_CONTEXT, { sessionId });
       const generator = geminiService.streamRagCompletion({
         prompt,
         contextChunks: relevantChunks,
@@ -77,6 +89,8 @@ export async function querySession(req, res) {
         content: fullAssistantReply,
         citations,
       });
+
+      logger.info('Streaming query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId, replyLength: fullAssistantReply.length });
     } else {
       let fullAssistantReply = '';
       const generator = geminiService.streamRagCompletion({
@@ -96,13 +110,14 @@ export async function querySession(req, res) {
         citations,
       });
 
+      logger.info('Synchronous query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId });
       return res.success('Query successful', {
         answer: fullAssistantReply,
         citations,
       });
     }
   } catch (error) {
-    console.error('Error during query:', error);
+    logger.error('Error during query execution', CONTEXT, SUB_CONTEXT, { error: error.message });
     if (!res.headersSent) {
       return res.error('Failed to query documents', error.message, 500);
     }
@@ -112,20 +127,25 @@ export async function querySession(req, res) {
 }
 
 export async function getMessages(req, res) {
+  const SUB_CONTEXT = getMessages.name;
   try {
     const { id: sessionId } = req.params;
     const userId = req.user.userId;
 
+    logger.info('Fetching chat messages for session', CONTEXT, SUB_CONTEXT, { sessionId, userId });
+
     // IDOR Check: Ensure session belongs to this user
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
+      logger.warn('Get messages rejected: unauthorized or not found', CONTEXT, SUB_CONTEXT, { sessionId, userId });
       return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
     }
 
     const messages = await mongoRepositories.chatMessages.findBySession(sessionId, { userId });
+    logger.info('Fetched chat messages successfully', CONTEXT, SUB_CONTEXT, { sessionId, messageCount: messages.length });
     return res.success('Messages retrieved successfully', messages);
   } catch (error) {
-    console.error('Error fetching messages:', error);
+    logger.error('Error fetching messages', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to fetch messages', error.message, 500);
   }
 }

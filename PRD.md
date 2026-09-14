@@ -74,24 +74,33 @@ journey
 - **FR-1.3 User Scoping & IDOR Prevention**: Every session, document, chunk, and message is stamped with `userId`. Database queries strictly check `{ id, userId }` to guarantee complete tenant isolation.
 
 ### 5.2. Session Management (Home Dashboard)
-- **FR-2.1 Session Listing**: Display cards/tables of user-owned active sessions showing title, document count, and last accessed timestamp.
+- **FR-2.1 Session Listing & Cursor-Based Pagination**:
+  - Display cards of user-owned active and archived sessions showing title, document count, and relative timestamps.
+  - Efficient cursor-based infinite scrolling on the frontend with a modern circular loader.
+  - Compound cursor `(updatedAt, _id)` query execution on the backend ensuring stable pagination without duplicate or skipped items.
+  - Server-side search filtering across session title and description.
 - **FR-2.2 Create Session**: Modal action to create a named session with an optional description.
 - **FR-2.3 Archive / Restore**: Ability to archive sessions to keep the dashboard clean, with instant restore.
-- **FR-2.4 Delete Session (In-App Modal)**: Delete session with a custom dark UI confirmation dialog (cascading cleanup of S3 files, Mongo documents, chunks, and chat history).
+- **FR-2.4 Soft Delete Session (In-App Modal)**: Delete session with a custom dark UI confirmation dialog. Performs cascading soft delete (`isDeleted: true`, `deletedAt`) across MongoDB sessions, documents, chunks, and chat messages while preserving underlying S3 assets.
 - **FR-2.5 Session Resume Across Reloads**: Selecting a session syncs the URL (`?session=<id>`). Browser page reloads automatically restore the active workspace.
 
 ### 5.3. Document Ingestion & Pipeline Processing
-- **FR-3.1 Multi-format Upload**: Drag-and-drop dropzone supporting `.pdf`, `.docx`, `.txt`, `.png`, `.jpg` (up to 25MB).
-- **FR-3.2 Processing Pipeline**:
+- **FR-3.1 Upload Limits & File Handling**:
+  - Drag-and-drop dropzone supporting `.pdf`, `.docx`, `.txt`, `.png`, `.jpeg`, `.webp`, `.bmp`, `.tiff`.
+  - Max file size: 1 MB per file; max upload count: 4 files per batch.
+  - User-friendly backend error responses with dedicated frontend snackbar notifications (replacing modal browser alerts).
+- **FR-3.2 Processing Pipeline & SQS Queuing**:
   - **Stage 1: S3 Upload**: Streamed raw file upload to AWS S3 (`ap-south-1`).
-  - **Stage 2: Safe Parsing**: Page-level PDF extraction via `pdf2json` with malformed URI recovery; DOCX parsing via `mammoth`.
-  - **Stage 3: Chunking & Vectorization**: Semantic chunking (~1200 chars, 200 overlap) and 3072-dim embeddings via `gemini-embedding-001`.
+  - **Stage 2: Asynchronous Job Queuing**: Jobs dispatched to AWS SQS queue (`document_processing_queue_local`) and processed by an isolated consumer worker.
+  - **Stage 3: Safe Parsing**: Page-level PDF extraction via `pdf2json` with malformed URI recovery; DOCX parsing via `mammoth`; cooperative event-loop yielding (`setImmediate`) to keep the Node.js event loop unblocked.
+  - **Stage 4: Chunking & Vectorization**: Semantic chunking (~1200 chars, 200 overlap, capped per file) and embeddings via `gemini-embedding-001`.
 - **FR-3.3 Ingestion Status Tracking**: Real-time status badges for each document: `Queued` ➔ `Processing` (auto-polled every 3s) ➔ `Ready` or `Failed`.
 
 ### 5.4. Query & Exploration Interfaces
 - **FR-4.1 Conversational Chat Interface**:
   - Natural language querying across all documents within the session.
-  - Streaming responses powered by `gemini-3.6-flash`.
+  - Streaming responses powered by Gemini API with multi-model fallback cascade (`gemini-2.5-flash` / `gemini-2.5-flash-lite`) to handle service capacity.
+  - Retry failed or unanswered prompts directly from the chat interface.
   - Inline source citations showing document name, page number, and snippet preview on click.
 - **FR-4.2 Citation Drawer & Document Viewer**:
   - Slide-over drawer displaying exact source text and page reference.
@@ -108,9 +117,10 @@ journey
 - Encrypted AWS S3 document storage at rest and in transit.
 
 ### 6.2. Performance & Scalability
-- Asynchronous task processing so file uploads never block the HTTP thread.
+- Asynchronous SQS worker processing so file uploads and CPU-heavy text extraction never block Express HTTP threads.
+- Cursor-based database queries using compound indexed keys `(userId, status, isDeleted, updatedAt, _id)`.
 - Vector search cosine similarity retrieval < 300ms.
-- Fast token-by-token streaming with `gemini-3.6-flash`.
+- Fast token-by-token streaming with multi-model Gemini fallback.
 
 ---
 

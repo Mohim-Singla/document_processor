@@ -7,12 +7,14 @@
 
 The Backend of the **Document Intelligence & Query System** is an asynchronous, dual-persistence Node.js service (Express.js, ES Modules) responsible for:
 1. **Authentication & IDOR Protection**: User registration/login with email and password via bcrypt + JWT. Middleware-level Bearer token verification with decrypted `req.user` attached to all requests. Strict owner `userId` scoping across all database operations to prevent IDOR attacks.
-2. **Workspace & Session Orchestration**: CRUD operations, archiving, and state management for user sessions in **MongoDB** (`sessions`). Session retrieval by ID (`GET /v1/sessions/:id`) for page reload persistence.
-3. **Secure Cloud File Ingestion**: Receiving multi-format documents (PDF, DOCX, TXT, images) and storing raw originals in **AWS S3** (`ap-south-1`).
-4. **Document Extraction & Processing Pipeline**: Parsing native text via `pdf2json` (with safe URI decoding) and `mammoth` (DOCX), structural extraction (pages, sections), and chunking.
-5. **Vector Embedding & Persistence**: Computing vector embeddings via **Google Gemini Embedding API** (`gemini-embedding-001`, 3072-dimensional) and storing high-dimensional vectors in **MongoDB** (`document_chunks`), stamped with `userId`.
-6. **RAG & Conversational Q&A**: Performing cosine semantic retrieval scoped by `userId`, context window assembly, and token-by-token streaming responses with source citations via **Google Gemini** (`gemini-3.6-flash`).
-7. **User Account Persistence**: Maintaining core user accounts and credentials in **MySQL** (`users` table, Sequelize).
+2. **Workspace & Session Orchestration**: CRUD operations, archiving, and state management for user sessions in **MongoDB** (`sessions`). Supports cursor-based pagination with indexed compound sorting `(userId, status, isDeleted, updatedAt, _id)` and session retrieval by ID (`GET /v1/sessions/:id`) for page reload persistence.
+3. **Secure Cloud File Ingestion**: Receiving multi-format documents (PDF, DOCX, TXT, images) up to 1 MB per file (max 4 files) and storing raw originals in **AWS S3** (`ap-south-1`).
+4. **Asynchronous SQS Queue Processing**: Offloading document extraction tasks via AWS SQS queue (`document_processing_queue_local`) consumed by background workers to preserve server responsiveness.
+5. **Document Extraction & Processing Pipeline**: Parsing native text via `pdf2json` (with safe URI decoding) and `mammoth` (DOCX), structural extraction, and cooperative event loop yielding (`setImmediate`) to prevent event loop starvation.
+6. **Vector Embedding & Persistence**: Computing vector embeddings via **Google Gemini Embedding API** (`gemini-embedding-001`, 3072-dimensional) and storing high-dimensional vectors in **MongoDB** (`document_chunks`), stamped with `userId`.
+7. **RAG & Conversational Q&A**: Performing cosine semantic retrieval scoped by `userId`, context window assembly, and token-by-token streaming responses with source citations via **Google Gemini** with multi-model fallback cascade.
+8. **Soft Deletion Persistence**: All entities (sessions, documents, chunks, chat messages) utilize non-destructive soft deletion (`isDeleted: true`, `deletedAt`).
+9. **User Account Persistence**: Maintaining core user accounts and credentials in **MySQL** (`users` table, Sequelize).
 
 ---
 
@@ -22,12 +24,13 @@ The Backend of the **Document Intelligence & Query System** is an asynchronous, 
 | :--- | :--- | :--- |
 | **Runtime & Framework** | Node.js (ESM) + Express.js (`v4.21.1`) | High-concurrency event-driven API server |
 | **Authentication** | `jsonwebtoken`, `bcryptjs` | JWT Bearer token issuance & validation, password hashing with salt 10 |
-| **Document, Session & Vector Store** | MongoDB + Mongoose (`v8.8.1`) | Sessions, documents, chunks, embeddings, and chat history with auto collection creation |
+| **Document, Session & Vector Store** | MongoDB + Mongoose (`v8.8.1`) | Sessions, documents, chunks, embeddings, and chat history with soft delete and compound cursor index support |
 | **User Persistence** | MySQL 8.x + Sequelize ORM (`v6.37.5`) | Transactional persistence strictly for `users` |
 | **Cloud File Storage** | AWS S3 (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`) | Scalable, encrypted raw document object store (`ap-south-1`) |
-| **File Upload Handling** | `multer` (memory storage) | Multipart form-data handling with MIME-type and size guards |
-| **AI & LLM Services** | Google Gemini API (`@google/genai` v2) | Embedding generation (`gemini-embedding-001`) & streaming generation (`gemini-3.6-flash`) |
-| **Document Parsers** | `pdf2json`, `mammoth` | Page-level PDF text extraction and DOCX parsing with safe URI decoding |
+| **Job Queue & Asynchronous Processing** | AWS SQS (`@aws-sdk/client-sqs`, `sqs-consumer`) | Asynchronous job dispatching and dedicated consumer worker |
+| **File Upload Handling** | `multer` (memory storage) | Multipart form-data handling with MIME-type and 1MB size limit constants |
+| **AI & LLM Services** | Google Gemini API (`@google/genai` v2) | Embedding generation (`gemini-embedding-001`) & streaming generation with fallback cascade |
+| **Document Parsers** | `pdf2json`, `mammoth` | Page-level PDF text extraction and DOCX parsing with safe URI decoding and event-loop yielding |
 | **Validation & Security** | `joi`, `cors` | Joi request schema validation and CORS configuration |
 
 ---
@@ -120,8 +123,11 @@ erDiagram
   title: { type: String, required: true },
   description: { type: String, default: null },
   status: { type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE', index: true },
-  documentCount: { type: Number, default: 0 }
+  documentCount: { type: Number, default: 0 },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date, default: null }
 }
+// Compound index: { userId: 1, status: 1, isDeleted: 1, updatedAt: -1, _id: -1 }
 ```
 
 #### `documents` Collection
@@ -137,7 +143,9 @@ erDiagram
   s3Bucket: { type: String, required: true },
   status: { type: String, enum: ['QUEUED', 'PROCESSING', 'READY', 'FAILED'], default: 'QUEUED', index: true },
   pageCount: { type: Number, default: 0 },
-  errorMessage: { type: String, default: null }
+  errorMessage: { type: String, default: null },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date, default: null }
 }
 ```
 
@@ -155,7 +163,9 @@ erDiagram
     charLength: Number,
     fileName: String
   },
-  embedding: { type: [Number], default: [] } // 3072 dims from gemini-embedding-001
+  embedding: { type: [Number], default: [] }, // 3072 dims from gemini-embedding-001
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date, default: null }
 }
 ```
 
@@ -176,7 +186,9 @@ erDiagram
       score: Number
     }
   ],
-  timestamp: { type: Date, default: Date.now }
+  timestamp: { type: Date, default: Date.now },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date, default: null }
 }
 ```
 
@@ -198,8 +210,8 @@ sequenceDiagram
     else Valid Token
         Middleware->>Middleware: Verify JWT & extract { userId, email, name }
         Middleware->>Controller: req.user = decodedToken
-        Controller->>DB: Query strictly scoped by { id, userId: req.user.userId }
-        alt Resource not owned by user
+        Controller->>DB: Query strictly scoped by { id, userId: req.user.userId, isDeleted: false }
+        alt Resource not owned by user or deleted
             DB-->>Controller: null
             Controller-->>Client: 404 / 403 Forbidden { errorCode: "FORBIDDEN" }
         else Owner Verified
@@ -219,24 +231,24 @@ sequenceDiagram
 - `GET /v1/auth/me`: Get authenticated user profile (`authenticateToken`).
 
 ### 5.2. Sessions API (Protected with `authenticateToken`)
-- `GET /v1/sessions`: List sessions for authenticated user (`where: { userId }`).
+- `GET /v1/sessions`: Cursor-paginated session list (`where: { userId, status, isDeleted: false }`). Accepts `cursor`, `limit` (max 50), and `search`. Returns `{ sessions, nextCursor, hasMore }`.
 - `GET /v1/sessions/:id`: Fetch single session by ID scoped to `userId` (enables reload recovery).
 - `POST /v1/sessions`: Create new session stamped with `req.user.userId`.
-- `PATCH /v1/sessions/:id`: Update session title or status (`where: { sessionId, userId }`).
-- `DELETE /v1/sessions/:id`: Cascaded deletion of S3 objects, MongoDB session, documents, chunks, and chat history (`where: { sessionId, userId }`).
+- `PATCH /v1/sessions/:id`: Update session title or status (`where: { sessionId, userId, isDeleted: false }`).
+- `DELETE /v1/sessions/:id`: Cascaded soft deletion of MongoDB session, documents, chunks, and chat history (`where: { sessionId, userId }`). Preserves S3 raw assets.
 
 ### 5.3. Documents API (Protected with `authenticateToken`)
-- `POST /v1/sessions/:id/documents`: Multipart upload (`files[]`). Verifies session ownership, uploads to S3, stamps `userId` on documents and chunks.
-- `GET /v1/sessions/:id/documents`: List documents belonging to session (`where: { sessionId, userId }`).
-- `GET /v1/sessions/:id/documents/:docId/preview`: Generate presigned AWS S3 `GetObject` URL (`where: { documentId, userId }`).
-- `DELETE /v1/sessions/:id/documents/:docId`: Remove document from MongoDB, delete S3 object, and clear associated chunks (`where: { documentId, sessionId, userId }`).
+- `POST /v1/sessions/:id/documents`: Multipart upload (`files[]`, max 1MB per file, max 4 files). Validates session ownership, uploads raw file to S3, persists document records with status `QUEUED`, and dispatches jobs to AWS SQS queue.
+- `GET /v1/sessions/:id/documents`: List documents belonging to session (`where: { sessionId, userId, isDeleted: false }`).
+- `GET /v1/sessions/:id/documents/:docId/preview`: Generate presigned AWS S3 `GetObject` URL (`where: { documentId, userId, isDeleted: false }`).
+- `DELETE /v1/sessions/:id/documents/:docId`: Soft delete document from MongoDB and associated chunks (`where: { documentId, sessionId, userId }`).
 
 ### 5.4. Conversational Query & Chat API (Protected with `authenticateToken`)
 - `POST /v1/sessions/:id/query`: Ask question over session documents.
   - Body: `{ "prompt": "...", "stream": true }`.
-  - Vectors retrieved from MongoDB strictly scoped to `{ sessionId, userId }`.
-  - Streams answer tokens followed by citation references via Server-Sent Events.
-- `GET /v1/sessions/:id/messages`: Retrieve chat message history (`where: { sessionId, userId }`).
+  - Vectors retrieved from MongoDB strictly scoped to `{ sessionId, userId, isDeleted: false }`.
+  - Streams answer tokens followed by citation references via Server-Sent Events, backed by fallback LLM cascades.
+- `GET /v1/sessions/:id/messages`: Retrieve chat message history (`where: { sessionId, userId, isDeleted: false }`).
 
 ---
 

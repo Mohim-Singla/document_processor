@@ -64,21 +64,22 @@ frontend/
 ## 4. UI Layout & Component Specifications
 
 ### 4.1. Screen 1: Dashboard (Homepage)
-- **Top Bar**: Application title, "+ Create New Session" primary CTA.
+- **Top Bar**: Application title, user info badge, sign-out button, "+ Create New Session" primary CTA.
 - **Filter Tabs**: Toggle between `Active Sessions` and `Archived Sessions`.
-- **Search**: Instant filtering of session cards by title and description.
-- **Session Card**:
-  - Session title and description.
-  - Active/Archived pill badge.
-  - Document counter and relative last-modified timestamp.
+- **Search**: Debounced search input filtering session cards by title and description with cursor pagination reset.
+- **Session Grid & Infinite Scrolling**:
+  - Grid of session cards with document counts and relative timestamps.
+  - Cursor-based infinite scrolling via `IntersectionObserver` on `#infinite-scroll-sentinel`.
+  - Circular spinner loader (`RefreshCw` animation) with "Loading more sessions..." indicator during pagination queries.
   - Context menu (`...`): Archive/Restore, Delete.
 - **Delete Confirmation (`ConfirmModal`)**:
-  - Custom dark dialog warning that session deletion permanently deletes all uploaded documents and vectors.
+  - Custom dark dialog confirming non-destructive soft deletion of the session and documents.
 
 ### 4.2. Screen 2: Session Workspace
 - **Top Bar**: Back button, session title, status badge, Gemini model badge.
 - **Left Panel (Documents Sidebar)**:
-  - Drag-and-drop dropzone supporting PDF, DOCX, TXT, PNG, JPG (up to 25MB).
+  - Drag-and-drop dropzone supporting PDF, DOCX, TXT, images (up to 1 MB per file, max 4 files).
+  - Error notifications presented through non-blocking error snackbar/toast toasts (no browser modal alerts).
   - Document items showing filename, file size, page count, and real-time status:
     - `Queued` (gray)
     - `Processing` (indigo pulsing spinner)

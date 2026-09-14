@@ -1,9 +1,36 @@
 import PDFParser from 'pdf2json';
 import mammoth from 'mammoth';
+import { createWorker } from 'tesseract.js';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'parsingService';
+
+let ocrWorkerInstance = null;
+
+/**
+ * Lazily initializes and caches a Tesseract OCR worker
+ */
+async function getOcrWorker() {
+  if (!ocrWorkerInstance) {
+    logger.info('Initializing Tesseract OCR worker', CONTEXT, getOcrWorker.name);
+    ocrWorkerInstance = await createWorker('eng');
+  }
+  return ocrWorkerInstance;
+}
+
+/**
+ * Extracts text from image buffer using Tesseract OCR
+ */
+async function extractImageText(buffer) {
+  const SUB_CONTEXT = extractImageText.name;
+  logger.info('Running Tesseract OCR on image buffer', CONTEXT, SUB_CONTEXT, { byteLength: buffer?.length });
+  const worker = await getOcrWorker();
+  const ret = await worker.recognize(buffer);
+  const text = ret.data.text ? ret.data.text.replace(/\s+/g, ' ').trim() : '';
+  logger.info('Tesseract OCR extraction finished', CONTEXT, SUB_CONTEXT, { extractedLength: text.length });
+  return text;
+}
 
 /**
  * Safely decodes URI-encoded text from pdf2json without throwing on unescaped '%' signs
@@ -115,20 +142,27 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
   let pages = [];
   let totalPageCount = 1;
 
-  if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {
+  const isImage = mimeType?.startsWith('image/') || /\.(png|jpe?g|webp|bmp|tiff)$/i.test(fileName);
+  const isPdf = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+  const isDocx =
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    fileName.toLowerCase().endsWith('.docx');
+
+  if (isPdf) {
     logger.info('Parsing PDF file with pdf2json', CONTEXT, SUB_CONTEXT, { fileName });
     const parsed = await extractPdfText(buffer);
     totalPageCount = parsed.pageCount;
     pages = parsed.pages;
-  } else if (
-    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    fileName.endsWith('.docx')
-  ) {
+  } else if (isDocx) {
     logger.info('Parsing DOCX document with mammoth', CONTEXT, SUB_CONTEXT, { fileName });
     const result = await mammoth.extractRawText({ buffer });
     pages.push({ pageNumber: 1, text: result.value });
+  } else if (isImage) {
+    logger.info('Parsing Image with Tesseract OCR', CONTEXT, SUB_CONTEXT, { fileName, mimeType });
+    const ocrText = await extractImageText(buffer);
+    pages.push({ pageNumber: 1, text: ocrText });
   } else {
-    logger.info('Parsing plaintext or fallback document', CONTEXT, SUB_CONTEXT, { fileName });
+    logger.info('Parsing plaintext document', CONTEXT, SUB_CONTEXT, { fileName });
     const text = buffer.toString('utf-8');
     pages.push({ pageNumber: 1, text });
   }
@@ -170,4 +204,5 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
 export const parsingService = {
   chunkText,
   parseDocument,
+  extractImageText,
 };

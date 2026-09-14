@@ -1,0 +1,6 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": ["node_modules", ".git"],
+  "exec": "DEBUG=app:request node src/app.js"
+}

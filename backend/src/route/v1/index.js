@@ -4,9 +4,30 @@ import { sessionController, documentController, queryController, authController 
 import { authenticateToken } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/requestValidator.js';
 import { authSchema } from '../../apiValidations/auth.js';
+import { fileFilter } from '../../middleware/fileFilter.js';
 
 const router = new express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter,
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25 MB max per file
+    files: 10,
+  },
+});
+
+// Middleware wrapper for multer error handling
+function handleUpload(req, res, next) {
+  upload.array('files')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      return res.error(err.message, 'FILE_UPLOAD_ERROR', 400);
+    }
+    if (err) {
+      return res.error(err.message, 'INVALID_FILE_TYPE', 400);
+    }
+    next();
+  });
+}
 
 // Public Auth Endpoints
 router.post('/auth/signup', validateRequest(authSchema.signup.body), authController.signup);
@@ -24,7 +45,7 @@ router.delete('/sessions/:id', authenticateToken, sessionController.deleteSessio
 
 // Protected Document Endpoints
 router.get('/sessions/:id/documents', authenticateToken, documentController.listDocuments);
-router.post('/sessions/:id/documents', authenticateToken, upload.array('files'), documentController.uploadDocuments);
+router.post('/sessions/:id/documents', authenticateToken, handleUpload, documentController.uploadDocuments);
 router.get('/sessions/:id/documents/:docId/preview', authenticateToken, documentController.getPreviewUrl);
 router.delete('/sessions/:id/documents/:docId', authenticateToken, documentController.deleteDocument);
 

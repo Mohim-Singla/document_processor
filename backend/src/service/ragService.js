@@ -19,9 +19,11 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 /**
- * Searches top K chunks for a session given a query, scoped by owner userId to prevent IDOR
+ * Searches top K chunks for a session given a query, scoped by owner userId to prevent IDOR.
+ * Implements document-fair diversified selection to ensure multi-document sessions
+ * don't have one document completely crowd out the others.
  */
-export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 5 }) {
+export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 10 }) {
   const SUB_CONTEXT = retrieveRelevantChunks.name;
   logger.info('Retrieving relevant chunks for RAG search', CONTEXT, SUB_CONTEXT, { sessionId, userId, topK });
 
@@ -58,12 +60,45 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
     };
   });
 
-  // Sort descending by score and pick top K
-  scoredChunks.sort((a, b) => b.score - a.score);
-  const selected = scoredChunks.slice(0, topK);
+  // Group chunks by documentId to ensure multi-document fairness
+  const byDoc = {};
+  for (const chunk of scoredChunks) {
+    const docId = chunk.documentId || 'unknown';
+    if (!byDoc[docId]) {
+      byDoc[docId] = [];
+    }
+    byDoc[docId].push(chunk);
+  }
 
-  logger.info('Top relevant chunks scored and selected', CONTEXT, SUB_CONTEXT, {
+  // Sort chunks within each document descending by score
+  for (const docId of Object.keys(byDoc)) {
+    byDoc[docId].sort((a, b) => b.score - a.score);
+  }
+
+  // Round-robin selection across distinct documents until topK is satisfied
+  const selected = [];
+  const docIds = Object.keys(byDoc);
+  let round = 0;
+  let addedInRound = true;
+
+  while (selected.length < topK && addedInRound) {
+    addedInRound = false;
+    for (const docId of docIds) {
+      if (round < byDoc[docId].length) {
+        selected.push(byDoc[docId][round]);
+        addedInRound = true;
+        if (selected.length >= topK) break;
+      }
+    }
+    round++;
+  }
+
+  // Final sort of selected excerpts by score descending
+  selected.sort((a, b) => b.score - a.score);
+
+  logger.info('Document-fair relevant chunks scored and selected', CONTEXT, SUB_CONTEXT, {
     totalEvaluated: allChunks.length,
+    documentCount: docIds.length,
     selectedCount: selected.length,
     topScore: selected[0]?.score,
   });

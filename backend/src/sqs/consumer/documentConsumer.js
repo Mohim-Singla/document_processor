@@ -32,6 +32,17 @@ export async function processDocumentMessage(sqsMessage) {
   logger.info('Processing document job from SQS', CONTEXT, SUB_CONTEXT, { documentId, sessionId, fileName });
 
   try {
+    // 0. Idempotency check: If document already processed and READY, skip and acknowledge
+    const existingDoc = await mongoRepositories.documents.fetchOne({ documentId });
+    if (existingDoc && existingDoc.status === 'READY') {
+      logger.info('Document already marked as READY/completed. Skipping processing.', CONTEXT, SUB_CONTEXT, {
+        documentId,
+        sessionId,
+        status: existingDoc.status,
+      });
+      return true;
+    }
+
     // 1. Download file buffer from S3
     const buffer = await s3Service.getObjectBuffer({ key: s3Key });
 

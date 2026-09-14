@@ -185,9 +185,9 @@ export async function deleteDocument(req, res) {
     const { id: sessionId, docId } = req.params;
     const userId = req.user.userId;
 
-    logger.info('Deleting document', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
+    logger.info('Deleting document (soft delete)', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
 
-    // IDOR Check: Ensure document belongs to this user and session
+    // IDOR Check: Ensure document belongs to this user and session and is not already deleted
     const document = await mongoRepositories.documents.fetchOne({ documentId: docId, sessionId, userId });
 
     if (!document) {
@@ -195,12 +195,12 @@ export async function deleteDocument(req, res) {
       return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
     }
 
-    await s3Service.deleteFromS3({ key: document.s3Key }).catch(() => {});
-    await mongoRepositories.documentChunks.deleteByDocument(docId, { userId });
-    await mongoRepositories.documents.destroy({ documentId: docId, userId });
+    // Soft delete document and its chunks (S3 file remains intact)
+    await mongoRepositories.documentChunks.softDeleteByDocument(docId, { userId });
+    await mongoRepositories.documents.softDelete({ documentId: docId, userId });
     await mongoRepositories.sessions.incrementDocCount(sessionId, -1);
 
-    logger.info('Document deleted successfully', CONTEXT, SUB_CONTEXT, { docId });
+    logger.info('Document soft-deleted successfully', CONTEXT, SUB_CONTEXT, { docId });
     return res.success('Document deleted successfully');
   } catch (error) {
     logger.error('Error deleting document', CONTEXT, SUB_CONTEXT, { error: error.message });

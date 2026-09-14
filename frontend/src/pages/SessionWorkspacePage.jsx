@@ -81,7 +81,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
       const newlyCreated = res.response || res.data || [];
       setDocuments((prev) => [...newlyCreated, ...prev]);
     } catch (err) {
-      alert(`Upload failed: ${err.message}`);
+      console.error('Upload failed:', err);
     } finally {
       setIsUploading(false);
     }
@@ -272,7 +272,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
       <ConfirmModal
         isOpen={Boolean(deleteTargetDocId)}
         title="Delete Document"
-        message="Are you sure you want to permanently delete this document and remove all extracted chunks from vector search?"
+        message="Are you sure you want to delete this document? This will soft delete the document and exclude it from vector search queries while preserving the underlying file."
         confirmText="Delete Document"
         cancelText="Keep Document"
         isDestructive={true}

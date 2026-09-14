@@ -14,8 +14,8 @@ export async function listSessions(req, res) {
 
     logger.info('Listing sessions for user', CONTEXT, SUB_CONTEXT, { userId, status });
 
-    // Strict owner scoping: Only fetch sessions owned by this user
-    const filter = { userId };
+    // Strict owner scoping: Only fetch sessions owned by this user that are not deleted
+    const filter = { userId, isDeleted: false };
     if (status) {
       filter.status = status;
     }
@@ -37,7 +37,7 @@ export async function getSessionById(req, res) {
 
     logger.info('Fetching session by ID', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
 
-    // IDOR Check: Ensure session exists and belongs to this user
+    // IDOR Check: Ensure session exists and belongs to this user and is not deleted
     const session = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!session) {
       logger.warn('Session not found or access denied', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
@@ -73,6 +73,8 @@ export async function createSession(req, res) {
       description: description || null,
       status: SESSION_STATUS.ACTIVE,
       documentCount: 0,
+      isDeleted: false,
+      deletedAt: null,
     });
 
     logger.info('Session created successfully', CONTEXT, SUB_CONTEXT, { sessionId, title });
@@ -123,33 +125,24 @@ export async function deleteSession(req, res) {
     const { id } = req.params;
     const userId = req.user.userId;
 
-    logger.info('Deleting session', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
+    logger.info('Deleting session (soft delete)', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
 
-    // IDOR Check: Ensure session belongs to the user
+    // IDOR Check: Ensure session belongs to the user and is not already deleted
     const session = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!session) {
       logger.warn('Session delete failed: not found or unauthorized', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
       return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
     }
 
-    // 1. Delete all S3 files belonging to this session
-    const docs = await mongoRepositories.documents.fetchAll({ sessionId: id, userId });
-    logger.info('Cleaning up S3 files for session', CONTEXT, SUB_CONTEXT, { count: docs.length });
-    for (const doc of docs) {
-      if (doc.s3Key) {
-        await s3Service.deleteFromS3({ key: doc.s3Key }).catch(() => {});
-      }
-    }
-
-    // 2. Cascade cleanup across all MongoDB collections with userId scoping
+    // Cascade soft delete across MongoDB collections (S3 documents are kept intact)
     await Promise.all([
-      mongoRepositories.documentChunks.deleteBySession(id, { userId }),
-      mongoRepositories.chatMessages.deleteBySession(id, { userId }),
-      mongoRepositories.documents.deleteBySession(id, { userId }),
-      mongoRepositories.sessions.destroy({ sessionId: id, userId }),
+      mongoRepositories.documentChunks.softDeleteBySession(id, { userId }),
+      mongoRepositories.chatMessages.softDeleteBySession(id, { userId }),
+      mongoRepositories.documents.softDeleteBySession(id, { userId }),
+      mongoRepositories.sessions.softDelete({ sessionId: id, userId }),
     ]);
 
-    logger.info('Session and associated documents deleted successfully', CONTEXT, SUB_CONTEXT, { sessionId: id });
+    logger.info('Session and associated documents soft-deleted successfully', CONTEXT, SUB_CONTEXT, { sessionId: id });
     return res.success('Session and associated documents deleted successfully');
   } catch (error) {
     logger.error('Error deleting session', CONTEXT, SUB_CONTEXT, { error: error.message });

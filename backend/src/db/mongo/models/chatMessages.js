@@ -16,6 +16,8 @@ const schema = new mongoose.Schema({
       score: Number,
     },
   ],
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 let model;

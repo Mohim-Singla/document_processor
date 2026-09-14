@@ -6,8 +6,21 @@ import ConfirmModal from '../components/common/ConfirmModal';
 import { getSessions, createSession, updateSession, deleteSession, getUser } from '../services/api';
 
 export default function DashboardPage({ onSelectSession, onLogout }) {
+  const getInitialFilter = () => {
+    const params = new URLSearchParams(window.location.search);
+    const urlTab = params.get('tab') || params.get('status') || params.get('filter');
+    if (urlTab) {
+      return urlTab.toUpperCase() === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE';
+    }
+    const savedFilter = localStorage.getItem('dashboardSessionFilter');
+    if (savedFilter) {
+      return savedFilter.toUpperCase() === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE';
+    }
+    return 'ACTIVE';
+  };
+
   const [sessions, setSessions] = useState([]);
-  const [filter, setFilter] = useState('ACTIVE');
+  const [filter, setFilter] = useState(getInitialFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -16,6 +29,18 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
   // Confirmation modal state
   const [deleteTargetSessionId, setDeleteTargetSessionId] = useState(null);
   const currentUser = getUser();
+
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter);
+    localStorage.setItem('dashboardSessionFilter', newFilter);
+    const url = new URL(window.location);
+    if (newFilter === 'ARCHIVED') {
+      url.searchParams.set('tab', 'ARCHIVED');
+    } else {
+      url.searchParams.delete('tab');
+    }
+    window.history.replaceState({}, '', url);
+  };
 
   const loadSessions = async () => {
     try {
@@ -34,6 +59,14 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
   };
 
   useEffect(() => {
+    localStorage.setItem('dashboardSessionFilter', filter);
+    const url = new URL(window.location);
+    if (filter === 'ARCHIVED') {
+      url.searchParams.set('tab', 'ARCHIVED');
+    } else {
+      url.searchParams.delete('tab');
+    }
+    window.history.replaceState({}, '', url);
     loadSessions();
   }, [filter]);
 
@@ -144,7 +177,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-6">
         <div className="flex items-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-xl self-start">
           <button
-            onClick={() => setFilter('ACTIVE')}
+            onClick={() => handleFilterChange('ACTIVE')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               filter === 'ACTIVE'
                 ? 'bg-indigo-600 text-white shadow-md'
@@ -155,7 +188,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
             Active Sessions
           </button>
           <button
-            onClick={() => setFilter('ARCHIVED')}
+            onClick={() => handleFilterChange('ARCHIVED')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               filter === 'ARCHIVED'
                 ? 'bg-indigo-600 text-white shadow-md'
@@ -232,7 +265,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       <ConfirmModal
         isOpen={Boolean(deleteTargetSessionId)}
         title="Delete Session"
-        message="Are you sure you want to permanently delete this session and all its uploaded documents? This action cannot be undone."
+        message="Are you sure you want to delete this session? This will perform a soft delete on the session and its documents, removing them from your view while preserving stored file assets."
         confirmText="Delete Session"
         cancelText="Keep Session"
         isDestructive={true}

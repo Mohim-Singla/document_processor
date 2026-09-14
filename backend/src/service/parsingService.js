@@ -97,14 +97,22 @@ function extractPdfText(buffer) {
   });
 }
 
+const setImmediatePromise = () => new Promise((resolve) => setImmediate(resolve));
+
 /**
- * Splits text into chunks with token overlap
+ * Splits text into chunks with token overlap in an event-loop cooperative manner
  */
-export function chunkText(text, { chunkSize = 1200, overlap = 200 } = {}) {
+export async function chunkText(text, { chunkSize = 1200, overlap = 200, maxChunks = 300 } = {}) {
   const chunks = [];
   let startIndex = 0;
+  let iteration = 0;
 
-  while (startIndex < text.length) {
+  while (startIndex < text.length && chunks.length < maxChunks) {
+    // Yield execution to the Node.js event loop every 50 iterations so HTTP requests and other I/O are never blocked
+    if (++iteration % 50 === 0) {
+      await setImmediatePromise();
+    }
+
     let endIndex = startIndex + chunkSize;
     if (endIndex >= text.length) {
       chunks.push(text.slice(startIndex).trim());
@@ -169,9 +177,12 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
 
   const documentChunks = [];
   let chunkIndexCounter = 0;
+  const MAX_TOTAL_DOCUMENT_CHUNKS = 250;
 
   for (const page of pages) {
-    const textChunks = chunkText(page.text);
+    if (documentChunks.length >= MAX_TOTAL_DOCUMENT_CHUNKS) break;
+    const remainingBudget = MAX_TOTAL_DOCUMENT_CHUNKS - documentChunks.length;
+    const textChunks = await chunkText(page.text, { maxChunks: remainingBudget });
     for (const chunkTextContent of textChunks) {
       if (!chunkTextContent) continue;
       documentChunks.push({
@@ -186,6 +197,7 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
           fileName,
         },
       });
+      if (documentChunks.length >= MAX_TOTAL_DOCUMENT_CHUNKS) break;
     }
   }
 

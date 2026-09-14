@@ -14,6 +14,8 @@ const schema = new mongoose.Schema({
     hasTable: Boolean,
   },
   embedding: { type: [Number], default: [] },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 let model;

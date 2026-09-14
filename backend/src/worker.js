@@ -1,5 +1,6 @@
 /* eslint-disable import/first */
 import { serviceConfig } from './config/index.js';
+
 serviceConfig;
 import { mongoConnection } from './db/mongo/connection/index.js';
 import { mysqlConnection } from './db/mysql/connection/index.js';

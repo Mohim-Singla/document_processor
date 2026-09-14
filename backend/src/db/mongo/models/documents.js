@@ -19,6 +19,8 @@ const schema = new mongoose.Schema(
     },
     pageCount: { type: Number, default: 0 },
     errorMessage: { type: String, default: null },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

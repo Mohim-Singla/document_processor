@@ -1,12 +1,12 @@
 import { modelMap } from '../models/index.js';
 
 async function create(messageData) {
-  return modelMap.chatMessagesModel.getModel().create(messageData);
+  return modelMap.chatMessagesModel.getModel().create({ isDeleted: false, deletedAt: null, ...messageData });
 }
 
 async function findBySession(sessionId, filter = {}, limit = 50) {
   return modelMap.chatMessagesModel.getModel()
-    .find({ sessionId, ...filter })
+    .find({ sessionId, isDeleted: { $ne: true }, ...filter })
     .sort({ createdAt: 1 })
     .limit(limit)
     .lean();
@@ -14,18 +14,26 @@ async function findBySession(sessionId, filter = {}, limit = 50) {
 
 async function findLastBySession(sessionId, filter = {}) {
   return modelMap.chatMessagesModel.getModel()
-    .findOne({ sessionId, ...filter })
+    .findOne({ sessionId, isDeleted: { $ne: true }, ...filter })
     .sort({ createdAt: -1 })
     .lean();
 }
 
+async function softDeleteBySession(sessionId, filter = {}) {
+  return modelMap.chatMessagesModel.getModel().updateMany(
+    { sessionId, isDeleted: { $ne: true }, ...filter },
+    { $set: { isDeleted: true, deletedAt: new Date() } }
+  );
+}
+
 async function deleteBySession(sessionId, filter = {}) {
-  return modelMap.chatMessagesModel.getModel().deleteMany({ sessionId, ...filter });
+  return softDeleteBySession(sessionId, filter);
 }
 
 export const chatMessages = {
   create,
   findBySession,
   findLastBySession,
+  softDeleteBySession,
   deleteBySession,
 };

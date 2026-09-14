@@ -58,7 +58,7 @@ export async function processDocumentMessage(sqsMessage) {
 
     logger.info('Document parsed by worker', CONTEXT, SUB_CONTEXT, { documentId, chunkCount: chunks.length, pageCount });
 
-    // 3. Compute vector embeddings for each chunk
+    // 3. Compute vector embeddings for each chunk (yielding to event loop to keep server responsive)
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       chunk.userId = userId;
@@ -68,6 +68,9 @@ export async function processDocumentMessage(sqsMessage) {
         chunkIndex: i + 1,
         totalChunks: chunks.length,
       });
+
+      // Yield event loop every chunk to give HTTP requests top priority
+      await new Promise((resolve) => setImmediate(resolve));
     }
 
     // 4. Bulk insert chunks into MongoDB

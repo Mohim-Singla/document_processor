@@ -14,6 +14,8 @@ const schema = new mongoose.Schema(
       index: true,
     },
     documentCount: { type: Number, default: 0 },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

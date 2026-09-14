@@ -20,3 +20,8 @@ export const ALLOWED_FILE_EXTENSIONS = new Set([
   '.bmp',
   '.tiff',
 ]);
+
+export const UPLOAD_LIMITS = {
+  MAX_FILE_SIZE_BYTES: 1 * 1024 * 1024, // 1 MB
+  MAX_FILES: 4,
+};

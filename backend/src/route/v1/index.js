@@ -5,14 +5,15 @@ import { authenticateToken } from '../../middleware/auth.js';
 import { validateRequest } from '../../middleware/requestValidator.js';
 import { authSchema } from '../../apiValidations/auth.js';
 import { fileFilter } from '../../middleware/fileFilter.js';
+import { UPLOAD_LIMITS } from '../../utils/constant/index.js';
 
 const router = new express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter,
   limits: {
-    fileSize: 25 * 1024 * 1024, // 25 MB max per file
-    files: 10,
+    fileSize: UPLOAD_LIMITS.MAX_FILE_SIZE_BYTES,
+    files: UPLOAD_LIMITS.MAX_FILES,
   },
 });
 
@@ -20,6 +21,20 @@ const upload = multer({
 function handleUpload(req, res, next) {
   upload.array('files')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.error(
+          `File size exceeds the limit of ${UPLOAD_LIMITS.MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB per file.`,
+          'FILE_SIZE_EXCEEDED',
+          400
+        );
+      }
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.error(
+          `Maximum ${UPLOAD_LIMITS.MAX_FILES} files can be uploaded at once.`,
+          'TOO_MANY_FILES',
+          400
+        );
+      }
       return res.error(err.message, 'FILE_UPLOAD_ERROR', 400);
     }
     if (err) {

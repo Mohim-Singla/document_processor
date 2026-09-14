@@ -121,7 +121,14 @@ export default function App() {
   const handleBackToDashboard = () => {
     setActiveSession(null);
     localStorage.removeItem('activeSessionId');
-    window.history.pushState({}, '', '/');
+    const newUrl = new URL(window.location);
+    newUrl.pathname = '/';
+    newUrl.searchParams.delete('session');
+    const savedFilter = localStorage.getItem('dashboardSessionFilter');
+    if (savedFilter === 'ARCHIVED') {
+      newUrl.searchParams.set('tab', 'ARCHIVED');
+    }
+    window.history.pushState({}, '', newUrl);
   };
 
   const handleLoginSuccess = (loggedInUser) => {

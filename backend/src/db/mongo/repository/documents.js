@@ -25,6 +25,10 @@ async function deleteBySession(sessionId) {
   return modelMap.documentsModel.getModel().deleteMany({ sessionId });
 }
 
+async function count(filter = {}) {
+  return modelMap.documentsModel.getModel().countDocuments(filter);
+}
+
 export const documents = {
   fetchOne,
   fetchAll,
@@ -32,4 +36,5 @@ export const documents = {
   update,
   destroy,
   deleteBySession,
+  count,
 };

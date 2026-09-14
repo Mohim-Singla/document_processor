@@ -18,6 +18,13 @@ async function update(filter, updateData) {
 }
 
 async function incrementDocCount(sessionId, delta = 1) {
+  if (delta < 0) {
+    // Prevent documentCount from dropping below 0
+    return modelMap.sessionsModel.getModel().updateOne(
+      { sessionId, documentCount: { $gt: 0 } },
+      { $inc: { documentCount: delta } }
+    );
+  }
   return modelMap.sessionsModel.getModel().updateOne({ sessionId }, { $inc: { documentCount: delta } });
 }
 

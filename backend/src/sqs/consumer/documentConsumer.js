@@ -80,9 +80,6 @@ export async function processDocumentMessage(sqsMessage) {
       { status: 'READY', pageCount }
     );
 
-    // 6. Increment session documentCount
-    await mongoRepositories.sessions.incrementDocCount(sessionId, 1);
-
     logger.info('Document worker successfully completed ingestion', CONTEXT, SUB_CONTEXT, {
       documentId,
       status: 'READY',

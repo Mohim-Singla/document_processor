@@ -83,6 +83,9 @@ export async function uploadDocuments(req, res) {
 
       createdDocs.push(docRecord);
 
+      // Increment session documentCount immediately on document creation
+      await mongoRepositories.sessions.incrementDocCount(sessionId, 1);
+
       // 3. Queue job via AWS SQS for worker processing (with in-process fallback if SQS fails/disabled)
       const jobPayload = {
         documentId,
@@ -131,7 +134,6 @@ export async function uploadDocuments(req, res) {
               { status: 'READY', pageCount }
             );
 
-            await mongoRepositories.sessions.incrementDocCount(sessionId, 1);
             logger.info('Local fallback document ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId });
           } catch (fallbackErr) {
             logger.error('Local fallback document ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, error: fallbackErr.message });

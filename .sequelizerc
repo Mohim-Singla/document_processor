@@ -1,0 +1,6 @@
+module.exports = {
+  config: 'src/config/database/mysqlConnectionConfig.js', // Adjust if needd
+  'models-path': 'src/db/mysql/models',
+  'seeders-path': 'src/db/mysql/seeders',
+  'migrations-path': 'src/db/mysql/migrations',
+};

@@ -1,44 +1,14 @@
 {
-  "name": "node_service",
+  "name": "document-processor-monorepo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "type": "module",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
-    "prestart": "npm run db:create && npm run db:migrate && npm run db:seed",
-    "start": "DEBUG=app:request node src/app.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "lint:fix": "eslint --fix '**/*.{js,cjs}'",
-    "db:create": "npx sequelize db:create",
-    "db:migrate": "npx sequelize db:migrate",
-    "db:seed": "npx sequelize db:seed:all",
-    "db:undo-migrate": "npx sequelize db:migrate:undo",
-    "db:undo-seed": "npx sequelize db:seed:undo:all"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@eslint/js": "^9.14.0",
-    "eslint": "^9.14.0",
-    "eslint-plugin-import": "^2.31.0",
-    "globals": "^15.12.0",
-    "jsdoc": "^4.0.4"
-  },
-  "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5",
-    "debug": "^4.3.7",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.1",
-    "http": "^0.0.1-security",
-    "joi": "^17.13.3",
-    "jsonwebtoken": "^9.0.2",
-    "lodash": "^4.17.21",
-    "mongoose": "^8.8.1",
-    "mysql2": "^3.11.4",
-    "sequelize": "^6.37.5",
-    "sequelize-cli": "^6.6.2",
-    "uuid": "^11.0.3"
+    "dev:backend": "npm run start --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build:frontend": "npm run build --workspace=frontend"
   }
 }

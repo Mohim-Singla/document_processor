@@ -1,0 +1,277 @@
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import DocumentDropzone from '../components/workspace/DocumentDropzone';
+import DocumentListItem from '../components/workspace/DocumentListItem';
+import ChatInterface from '../components/workspace/ChatInterface';
+import CitationDrawer from '../components/workspace/CitationDrawer';
+import ConfirmModal from '../components/common/ConfirmModal';
+import {
+  getSessionDocuments,
+  uploadDocuments,
+  getDocumentPreviewUrl,
+  deleteDocument,
+  getSessionMessages,
+  streamQuery,
+} from '../services/api';
+
+export default function SessionWorkspacePage({ session, onBack }) {
+  const [documents, setDocuments] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [currentStreamText, setCurrentStreamText] = useState('');
+  const [selectedCitation, setSelectedCitation] = useState(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Confirmation modal state for document deletion
+  const [deleteTargetDocId, setDeleteTargetDocId] = useState(null);
+
+  const loadSessionData = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const [docRes, msgRes] = await Promise.all([
+        getSessionDocuments(session.sessionId).catch(() => ({ response: [] })),
+        getSessionMessages(session.sessionId).catch(() => ({ response: [] })),
+      ]);
+
+      const docList = docRes.response || docRes.data || (Array.isArray(docRes) ? docRes : []);
+      setDocuments(docList);
+
+      const msgList = msgRes.response || msgRes.data || (Array.isArray(msgRes) ? msgRes : []);
+      setMessages(msgList);
+    } catch (err) {
+      console.error('Failed to load session details:', err);
+      setError(err.message || 'Failed to fetch session documents and history.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSessionData();
+  }, [session.sessionId]);
+
+  // Status polling when documents are processing or queued
+  useEffect(() => {
+    const hasPending = documents.some(
+      (d) => d.status === 'PROCESSING' || d.status === 'QUEUED'
+    );
+    if (!hasPending) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await getSessionDocuments(session.sessionId);
+        const updated = res.response || res.data || [];
+        setDocuments(updated);
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [documents, session.sessionId]);
+
+  const handleUpload = async (files) => {
+    setIsUploading(true);
+    try {
+      const res = await uploadDocuments(session.sessionId, files);
+      const newlyCreated = res.response || res.data || [];
+      setDocuments((prev) => [...newlyCreated, ...prev]);
+    } catch (err) {
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const confirmDeleteDoc = async () => {
+    if (!deleteTargetDocId) return;
+    try {
+      await deleteDocument(session.sessionId, deleteTargetDocId);
+      setDocuments((prev) => prev.filter((d) => d.documentId !== deleteTargetDocId));
+    } catch (err) {
+      alert(`Failed to delete document: ${err.message}`);
+    } finally {
+      setDeleteTargetDocId(null);
+    }
+  };
+
+  const handlePreviewDoc = async (doc) => {
+    try {
+      const res = await getDocumentPreviewUrl(session.sessionId, doc.documentId);
+      const url = res.response?.url || res.data?.url || res.url;
+      if (url) {
+        window.open(url, '_blank');
+      } else {
+        alert('No preview URL available for this document.');
+      }
+    } catch (err) {
+      alert(`Failed to get preview URL: ${err.message}`);
+    }
+  };
+
+  const handleSendMessage = async (prompt) => {
+    const userMsg = { sender: 'USER', content: prompt, citations: [] };
+    setMessages((prev) => [...prev, userMsg]);
+    setIsStreaming(true);
+    setCurrentStreamText('');
+
+    let accumulatedText = '';
+    let citationsCollected = [];
+
+    try {
+      await streamQuery(session.sessionId, prompt, {
+        onToken: (token) => {
+          accumulatedText += token;
+          setCurrentStreamText(accumulatedText);
+        },
+        onCitations: (citations) => {
+          citationsCollected = citations;
+        },
+        onError: (err) => {
+          console.error('Stream error:', err);
+          alert(`Query error: ${err.message}`);
+          setIsStreaming(false);
+        },
+        onComplete: () => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              sender: 'ASSISTANT',
+              content: accumulatedText,
+              citations: citationsCollected,
+            },
+          ]);
+          setIsStreaming(false);
+          setCurrentStreamText('');
+        },
+      });
+    } catch (err) {
+      alert(`Query failed: ${err.message}`);
+      setIsStreaming(false);
+      setCurrentStreamText('');
+    }
+  };
+
+  const handleSelectCitation = (citation) => {
+    setSelectedCitation(citation);
+    setIsDrawerOpen(true);
+  };
+
+  return (
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-950">
+      {/* Top Navigation */}
+      <header className="h-16 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/60 backdrop-blur-md shrink-0">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Sessions</span>
+          </button>
+          <div className="h-4 w-px bg-slate-800" />
+          <div>
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              {session.title}
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                {session.status || 'ACTIVE'}
+              </span>
+            </h2>
+            {session.description && (
+              <p className="text-[11px] text-slate-400 truncate max-w-md">{session.description}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Google Gemini Pro</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Workspace Layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Documents Sidebar */}
+        <aside className="w-80 border-r border-slate-800/80 p-5 flex flex-col justify-between bg-slate-900/30 overflow-y-auto shrink-0">
+          <div className="space-y-5">
+            <div>
+              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
+                Upload Documents
+              </h3>
+              <DocumentDropzone onUpload={handleUpload} isUploading={isUploading} />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Session Documents ({documents.length})
+                </h3>
+              </div>
+              <div className="space-y-2">
+                {loading ? (
+                  <div className="flex items-center justify-center py-6 text-slate-500 gap-2 text-xs">
+                    <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
+                    <span>Loading documents...</span>
+                  </div>
+                ) : documents.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-6">
+                    No documents uploaded yet.
+                  </p>
+                ) : (
+                  documents.map((doc) => (
+                    <DocumentListItem
+                      key={doc.documentId}
+                      doc={doc}
+                      onPreview={() => handlePreviewDoc(doc)}
+                      onDelete={(docId) => setDeleteTargetDocId(docId)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Center / Right Chat Workspace */}
+        <main className="flex-1 p-6 overflow-hidden">
+          <ChatInterface
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            isStreaming={isStreaming}
+            currentStreamText={currentStreamText}
+            onSelectCitation={handleSelectCitation}
+          />
+        </main>
+      </div>
+
+      {/* Citation Slide-over Drawer */}
+      <CitationDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        citation={selectedCitation}
+        onPreviewOriginal={(docId) => {
+          const doc = documents.find((d) => d.documentId === docId);
+          if (doc) handlePreviewDoc(doc);
+        }}
+      />
+
+      {/* UI Integrated Confirmation Modal for Document Deletion */}
+      <ConfirmModal
+        isOpen={Boolean(deleteTargetDocId)}
+        title="Delete Document"
+        message="Are you sure you want to permanently delete this document and remove all extracted chunks from vector search?"
+        confirmText="Delete Document"
+        cancelText="Keep Document"
+        isDestructive={true}
+        onConfirm={confirmDeleteDoc}
+        onClose={() => setDeleteTargetDocId(null)}
+      />
+    </div>
+  );
+}

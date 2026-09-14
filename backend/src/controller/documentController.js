@@ -3,6 +3,7 @@ import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { s3Service } from '../service/s3Service.js';
 import { parsingService } from '../service/parsingService.js';
 import { geminiService } from '../service/geminiService.js';
+import { sqsProducer } from '../sqs/producer/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'documentController';
@@ -82,50 +83,65 @@ export async function uploadDocuments(req, res) {
 
       createdDocs.push(docRecord);
 
-      // 3. Process asynchronously (parse, embed, index)
-      (async () => {
-        const INGEST_SUB_CONTEXT = 'processAsyncDocument';
-        try {
-          logger.info('Starting async document ingestion', CONTEXT, INGEST_SUB_CONTEXT, { documentId, fileName: file.originalname });
+      // 3. Queue job via AWS SQS for worker processing (with in-process fallback if SQS fails/disabled)
+      const jobPayload = {
+        documentId,
+        sessionId,
+        userId,
+        s3Key,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+      };
 
-          const { pageCount, chunks } = await parsingService.parseDocument({
-            buffer: file.buffer,
-            fileName: file.originalname,
-            mimeType: file.mimetype,
-            documentId,
-            sessionId,
-          });
+      try {
+        await sqsProducer.sendDocumentJob(jobPayload);
+        logger.info('Document processing queued via SQS successfully', CONTEXT, SUB_CONTEXT, { documentId });
+      } catch (sqsErr) {
+        logger.warn('Failed to queue to SQS. Falling back to local in-process ingestion', CONTEXT, SUB_CONTEXT, {
+          documentId,
+          error: sqsErr.message,
+        });
 
-          logger.info('Document parsed into chunks', CONTEXT, INGEST_SUB_CONTEXT, { documentId, chunkCount: chunks.length, pageCount });
+        // In-process fallback
+        (async () => {
+          const INGEST_SUB_CONTEXT = 'processAsyncDocumentFallback';
+          try {
+            logger.info('Starting local fallback document ingestion', CONTEXT, INGEST_SUB_CONTEXT, { documentId, fileName: file.originalname });
 
-          // Attach owner userId to each chunk and compute embedding
-          for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            chunk.userId = userId;
-            chunk.embedding = await geminiService.getEmbedding(chunk.content);
-            logger.debug('Computed chunk embedding', CONTEXT, INGEST_SUB_CONTEXT, { documentId, chunkIndex: i + 1, totalChunks: chunks.length });
+            const { pageCount, chunks } = await parsingService.parseDocument({
+              buffer: file.buffer,
+              fileName: file.originalname,
+              mimeType: file.mimetype,
+              documentId,
+              sessionId,
+            });
+
+            for (let i = 0; i < chunks.length; i++) {
+              const chunk = chunks[i];
+              chunk.userId = userId;
+              chunk.embedding = await geminiService.getEmbedding(chunk.content);
+            }
+
+            if (chunks.length > 0) {
+              await mongoRepositories.documentChunks.bulkInsert(chunks);
+            }
+
+            await mongoRepositories.documents.update(
+              { documentId, userId },
+              { status: 'READY', pageCount }
+            );
+
+            await mongoRepositories.sessions.incrementDocCount(sessionId, 1);
+            logger.info('Local fallback document ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId });
+          } catch (fallbackErr) {
+            logger.error('Local fallback document ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, error: fallbackErr.message });
+            await mongoRepositories.documents.update(
+              { documentId, userId },
+              { status: 'FAILED', errorMessage: fallbackErr.message }
+            );
           }
-
-          if (chunks.length > 0) {
-            await mongoRepositories.documentChunks.bulkInsert(chunks);
-          }
-
-          await mongoRepositories.documents.update(
-            { documentId, userId },
-            { status: 'READY', pageCount }
-          );
-
-          // Increment documentCount on session
-          await mongoRepositories.sessions.incrementDocCount(sessionId, 1);
-          logger.info('Document ingestion completed successfully', CONTEXT, INGEST_SUB_CONTEXT, { documentId, status: 'READY' });
-        } catch (err) {
-          logger.error('Document ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, error: err.message });
-          await mongoRepositories.documents.update(
-            { documentId, userId },
-            { status: 'FAILED', errorMessage: err.message }
-          );
-        }
-      })();
+        })();
+      }
     }
 
     return res.success('Documents uploaded and processing started', createdDocs, 202);

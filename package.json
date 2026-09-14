@@ -8,7 +8,14 @@
   ],
   "scripts": {
     "dev:backend": "npm run dev --workspace=backend",
+    "dev:worker": "npm run worker:dev --workspace=backend",
+    "worker": "npm run worker --workspace=backend",
+    "dev:services": "concurrently -n \"API,WORKER\" -c \"blue,magenta\" \"npm run dev:backend\" \"npm run dev:worker\"",
+    "dev:all": "concurrently -n \"API,WORKER,FRONTEND\" -c \"blue,magenta,green\" \"npm run dev:backend\" \"npm run dev:worker\" \"npm run dev:frontend\"",
     "dev:frontend": "npm run dev --workspace=frontend",
     "build:frontend": "npm run build --workspace=frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
   }
 }

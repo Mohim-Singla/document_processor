@@ -44,6 +44,26 @@ async function main() {
 
     app.use('', routeMap);
 
+    // =========================================================================
+    // IN-PROCESS SQS BACKGROUND WORKER CONSUMER
+    // (Comment out this block if deploying the worker as a separate instance)
+    // =========================================================================
+    try {
+      const { sqsClient } = await import('./sqs/client/index.js');
+      const { sqsClientConfig } = await import('./config/sqs/sqsClientConfig.js');
+      const { processDocumentMessage } = await import('./sqs/consumer/documentConsumer.js');
+
+      await sqsClient.initAllQueues();
+      await sqsClient.initConsumer({
+        queueName: sqsClientConfig.QUEUES.DOCUMENT_PROCESSING,
+        handleMessage: processDocumentMessage,
+      });
+      console.info('In-process SQS Worker initialized and listening for document jobs.');
+    } catch (workerError) {
+      console.warn('Could not initialize in-process SQS consumer:', workerError.message);
+    }
+    // =========================================================================
+
     server.listen(PORT, (error) => {
       if (error) {
         throw error;

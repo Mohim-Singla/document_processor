@@ -113,4 +113,30 @@ export const s3Service = {
   uploadToS3,
   getPresignedDownloadUrl,
   deleteFromS3,
+  getObjectBuffer,
 };
+
+/**
+ * Downloads an object buffer from S3 given its S3 key
+ */
+export async function getObjectBuffer({ key }) {
+  const SUB_CONTEXT = 'getObjectBuffer';
+  logger.info('Downloading object buffer from S3', CONTEXT, SUB_CONTEXT, { bucketName, key });
+
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    logger.critical('AWS S3 credentials missing in environment', CONTEXT, SUB_CONTEXT);
+    throw new Error('AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) are missing in environment.');
+  }
+
+  const client = getClient();
+  const command = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+  });
+
+  const response = await client.send(command);
+  const byteArray = await response.Body.transformToByteArray();
+  const buffer = Buffer.from(byteArray);
+  logger.info('Successfully downloaded object buffer from S3', CONTEXT, SUB_CONTEXT, { key, byteLength: buffer.length });
+  return buffer;
+}

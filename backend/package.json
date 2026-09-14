@@ -8,6 +8,8 @@
     "prestart": "npm run db:create && npm run db:migrate && npm run db:seed",
     "start": "DEBUG=app:request node src/app.js",
     "dev": "DEBUG=app:request nodemon src/app.js",
+    "worker": "DEBUG=app:request node src/worker.js",
+    "worker:dev": "DEBUG=app:request nodemon --exec \"node src/worker.js\" src/worker.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint:fix": "eslint --fix '**/*.{js,cjs}'",
     "db:create": "npx sequelize db:create",
@@ -29,6 +31,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
+    "@aws-sdk/client-sqs": "^3.1131.0",
     "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "@google/genai": "^2.22.0",
     "bcryptjs": "^3.0.2",
@@ -48,6 +51,7 @@
     "pdf2json": "^4.1.0",
     "sequelize": "^6.37.5",
     "sequelize-cli": "^6.6.2",
+    "sqs-consumer": "^15.0.3",
     "tesseract.js": "^7.0.0",
     "uuid": "^11.0.3"
   }

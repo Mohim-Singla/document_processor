@@ -87,22 +87,56 @@ Rules:
 `;
 
   const ai = getAI();
-  const model = process.env.GEMINI_LLM_MODEL || 'gemini-3.6-flash';
+  const primaryModel = process.env.GEMINI_LLM_MODEL || 'gemini-3.5-flash';
+  // Candidate fallback models in case the primary experiences temporary 503 demand spikes
+  const candidateModels = [
+    primaryModel,
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+
   const fullUserPrompt = `Context Documents:\n${formattedContext}\n\nUser Question:\n${prompt}`;
 
-  logger.info('Invoking Gemini generateContentStream', CONTEXT, SUB_CONTEXT, { model });
+  let streamResult = null;
+  let activeModel = primaryModel;
 
-  const streamResult = await ai.models.generateContentStream({
-    model,
-    contents: [
-      { role: 'user', parts: [{ text: fullUserPrompt }] }
-    ],
-    config: {
-      systemInstruction: {
-        parts: [{ text: systemInstruction }]
+  for (const candidate of candidateModels) {
+    try {
+      logger.info('Invoking Gemini generateContentStream', CONTEXT, SUB_CONTEXT, { model: candidate });
+      streamResult = await ai.models.generateContentStream({
+        model: candidate,
+        contents: [{ role: 'user', parts: [{ text: fullUserPrompt }] }],
+        config: {
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
+          },
+        },
+      });
+      activeModel = candidate;
+      break;
+    } catch (err) {
+      const isCapacityError =
+        err.message?.includes('503') ||
+        err.message?.includes('high demand') ||
+        err.message?.includes('UNAVAILABLE');
+
+      if (isCapacityError) {
+        logger.warn(`Model ${candidate} is experiencing high demand (503). Trying fallback candidate...`, CONTEXT, SUB_CONTEXT, {
+          candidate,
+          error: err.message,
+        });
+        // Short pause before attempting the next candidate
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
       }
+      throw err;
     }
-  });
+  }
+
+  if (!streamResult) {
+    throw new Error('All Gemini model clusters are currently at capacity (503). Please retry in a few moments.');
+  }
 
   for await (const chunk of streamResult) {
     const text = chunk.text;
@@ -111,7 +145,7 @@ Rules:
     }
   }
 
-  logger.info('Gemini stream generation completed', CONTEXT, SUB_CONTEXT);
+  logger.info('Gemini stream generation completed', CONTEXT, SUB_CONTEXT, { activeModel });
 }
 
 export const geminiService = {

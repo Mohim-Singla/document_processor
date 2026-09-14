@@ -1,0 +1,22 @@
+export const SESSION_STATUS = {
+  ACTIVE: 'ACTIVE',
+  ARCHIVED: 'ARCHIVED',
+};
+
+export const DOCUMENT_STATUS = {
+  QUEUED: 'QUEUED',
+  PROCESSING: 'PROCESSING',
+  READY: 'READY',
+  FAILED: 'FAILED',
+};
+
+export const MESSAGE_SENDER = {
+  USER: 'USER',
+  ASSISTANT: 'ASSISTANT',
+};
+
+export default {
+  SESSION_STATUS,
+  DOCUMENT_STATUS,
+  MESSAGE_SENDER,
+};

@@ -2,6 +2,7 @@ import { mongoRepositories } from '../../db/mongo/repository/index.js';
 import { s3Service } from '../../service/s3Service.js';
 import { parsingService } from '../../service/parsingService.js';
 import { geminiService } from '../../service/geminiService.js';
+import { DOCUMENT_STATUS } from '../../utils/constant/status.js';
 import { logger } from '../../utils/logger.js';
 
 const CONTEXT = 'documentConsumer';
@@ -34,7 +35,7 @@ export async function processDocumentMessage(sqsMessage) {
   try {
     // 0. Idempotency check: If document already processed and READY, skip and acknowledge
     const existingDoc = await mongoRepositories.documents.fetchOne({ documentId });
-    if (existingDoc && existingDoc.status === 'READY') {
+    if (existingDoc && existingDoc.status === DOCUMENT_STATUS.READY) {
       logger.info('Document already marked as READY/completed. Skipping processing.', CONTEXT, SUB_CONTEXT, {
         documentId,
         sessionId,
@@ -77,12 +78,12 @@ export async function processDocumentMessage(sqsMessage) {
     // 5. Update document status to READY
     await mongoRepositories.documents.update(
       { documentId, userId },
-      { status: 'READY', pageCount }
+      { status: DOCUMENT_STATUS.READY, pageCount }
     );
 
     logger.info('Document worker successfully completed ingestion', CONTEXT, SUB_CONTEXT, {
       documentId,
-      status: 'READY',
+      status: DOCUMENT_STATUS.READY,
       chunkCount: chunks.length,
     });
 
@@ -97,7 +98,7 @@ export async function processDocumentMessage(sqsMessage) {
     try {
       await mongoRepositories.documents.update(
         { documentId, userId },
-        { status: 'FAILED', errorMessage: err.message }
+        { status: DOCUMENT_STATUS.FAILED, errorMessage: err.message }
       );
     } catch (dbErr) {
       logger.error('Failed to update document status to FAILED', CONTEXT, SUB_CONTEXT, { error: dbErr.message });

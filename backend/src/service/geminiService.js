@@ -22,7 +22,7 @@ function getAI() {
 export async function getEmbedding(text) {
   const SUB_CONTEXT = getEmbedding.name;
   // Mock only runs when ENV === 'test'
-  if (process.env.ENV === 'test') {
+  if (process.env.ENV === ENVS.TEST) {
     logger.debug('Returning test mock embedding vector', CONTEXT, SUB_CONTEXT, { textLength: text.length });
     return new Array(768).fill(0).map((_, i) => Math.sin(i + text.length) * 0.05);
   }

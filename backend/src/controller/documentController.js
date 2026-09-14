@@ -4,6 +4,7 @@ import { s3Service } from '../service/s3Service.js';
 import { parsingService } from '../service/parsingService.js';
 import { geminiService } from '../service/geminiService.js';
 import { sqsProducer } from '../sqs/producer/index.js';
+import { DOCUMENT_STATUS } from '../utils/constant/status.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'documentController';
@@ -78,7 +79,7 @@ export async function uploadDocuments(req, res) {
         fileSize: file.size,
         s3Key,
         s3Bucket: s3Result.bucket,
-        status: 'PROCESSING',
+        status: DOCUMENT_STATUS.PROCESSING,
       });
 
       createdDocs.push(docRecord);
@@ -131,7 +132,7 @@ export async function uploadDocuments(req, res) {
 
             await mongoRepositories.documents.update(
               { documentId, userId },
-              { status: 'READY', pageCount }
+              { status: DOCUMENT_STATUS.READY, pageCount }
             );
 
             logger.info('Local fallback document ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId });
@@ -139,7 +140,7 @@ export async function uploadDocuments(req, res) {
             logger.error('Local fallback document ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, error: fallbackErr.message });
             await mongoRepositories.documents.update(
               { documentId, userId },
-              { status: 'FAILED', errorMessage: fallbackErr.message }
+              { status: DOCUMENT_STATUS.FAILED, errorMessage: fallbackErr.message }
             );
           }
         })();

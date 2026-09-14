@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { SESSION_STATUS } from '../../../utils/constant/status.js';
 
 const schema = new mongoose.Schema(
   {
@@ -6,7 +7,12 @@ const schema = new mongoose.Schema(
     userId: { type: String, default: null, index: true },
     title: { type: String, required: true },
     description: { type: String, default: null },
-    status: { type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE', index: true },
+    status: {
+      type: String,
+      enum: Object.values(SESSION_STATUS),
+      default: SESSION_STATUS.ACTIVE,
+      index: true,
+    },
     documentCount: { type: Number, default: 0 },
   },
   { timestamps: true }

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { DOCUMENT_STATUS } from '../../../utils/constant/status.js';
 
 const schema = new mongoose.Schema(
   {
@@ -12,8 +13,8 @@ const schema = new mongoose.Schema(
     s3Bucket: { type: String, required: true },
     status: {
       type: String,
-      enum: ['QUEUED', 'PROCESSING', 'READY', 'FAILED'],
-      default: 'QUEUED',
+      enum: Object.values(DOCUMENT_STATUS),
+      default: DOCUMENT_STATUS.QUEUED,
       index: true,
     },
     pageCount: { type: Number, default: 0 },

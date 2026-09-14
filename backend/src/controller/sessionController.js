@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { s3Service } from '../service/s3Service.js';
+import { SESSION_STATUS } from '../utils/constant/status.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'sessionController';
@@ -8,7 +9,7 @@ const CONTEXT = 'sessionController';
 export async function listSessions(req, res) {
   const SUB_CONTEXT = listSessions.name;
   try {
-    const { status = 'ACTIVE' } = req.query;
+    const { status = SESSION_STATUS.ACTIVE } = req.query;
     const userId = req.user.userId;
 
     logger.info('Listing sessions for user', CONTEXT, SUB_CONTEXT, { userId, status });
@@ -70,7 +71,7 @@ export async function createSession(req, res) {
       userId,
       title,
       description: description || null,
-      status: 'ACTIVE',
+      status: SESSION_STATUS.ACTIVE,
       documentCount: 0,
     });
 

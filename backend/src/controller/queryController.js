@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { ragService } from '../service/ragService.js';
 import { geminiService } from '../service/geminiService.js';
+import { MESSAGE_SENDER } from '../utils/constant/status.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'queryController';
@@ -48,14 +49,14 @@ export async function querySession(req, res) {
 
     // Record user message with owner userId if not a retry of the last unanswered message
     const lastMsg = await mongoRepositories.chatMessages.findLastBySession(sessionId, { userId });
-    const isRetryOfUnanswered = lastMsg && lastMsg.sender === 'USER' && lastMsg.content === prompt;
+    const isRetryOfUnanswered = lastMsg && lastMsg.sender === MESSAGE_SENDER.USER && lastMsg.content === prompt;
 
     if (!isRetryOfUnanswered) {
       await mongoRepositories.chatMessages.create({
         messageId: uuidv4(),
         sessionId,
         userId,
-        sender: 'USER',
+        sender: MESSAGE_SENDER.USER,
         content: prompt,
         citations: [],
       });
@@ -92,7 +93,7 @@ export async function querySession(req, res) {
         messageId: uuidv4(),
         sessionId,
         userId,
-        sender: 'ASSISTANT',
+        sender: MESSAGE_SENDER.ASSISTANT,
         content: fullAssistantReply,
         citations,
       });
@@ -112,7 +113,7 @@ export async function querySession(req, res) {
         messageId: uuidv4(),
         sessionId,
         userId,
-        sender: 'ASSISTANT',
+        sender: MESSAGE_SENDER.ASSISTANT,
         content: fullAssistantReply,
         citations,
       });
@@ -125,7 +126,7 @@ export async function querySession(req, res) {
     }
   } catch (error) {
     logger.error('Error during query execution', CONTEXT, SUB_CONTEXT, { error: error.message });
-    
+
     // Clean up error message if it is stringified JSON (e.g. from Google Gemini API)
     let userFriendlyMessage = error.message;
     try {

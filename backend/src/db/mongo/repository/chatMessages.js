@@ -12,6 +12,13 @@ async function findBySession(sessionId, filter = {}, limit = 50) {
     .lean();
 }
 
+async function findLastBySession(sessionId, filter = {}) {
+  return modelMap.chatMessagesModel.getModel()
+    .findOne({ sessionId, ...filter })
+    .sort({ createdAt: -1 })
+    .lean();
+}
+
 async function deleteBySession(sessionId, filter = {}) {
   return modelMap.chatMessagesModel.getModel().deleteMany({ sessionId, ...filter });
 }
@@ -19,5 +26,6 @@ async function deleteBySession(sessionId, filter = {}) {
 export const chatMessages = {
   create,
   findBySession,
+  findLastBySession,
   deleteBySession,
 };

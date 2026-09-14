@@ -46,15 +46,22 @@ export async function querySession(req, res) {
 
     logger.info('Found relevant chunks for context', CONTEXT, SUB_CONTEXT, { chunkCount: relevantChunks.length });
 
-    // Record user message with owner userId
-    await mongoRepositories.chatMessages.create({
-      messageId: uuidv4(),
-      sessionId,
-      userId,
-      sender: 'USER',
-      content: prompt,
-      citations: [],
-    });
+    // Record user message with owner userId if not a retry of the last unanswered message
+    const lastMsg = await mongoRepositories.chatMessages.findLastBySession(sessionId, { userId });
+    const isRetryOfUnanswered = lastMsg && lastMsg.sender === 'USER' && lastMsg.content === prompt;
+
+    if (!isRetryOfUnanswered) {
+      await mongoRepositories.chatMessages.create({
+        messageId: uuidv4(),
+        sessionId,
+        userId,
+        sender: 'USER',
+        content: prompt,
+        citations: [],
+      });
+    } else {
+      logger.info('Retrying last unanswered prompt - reusing existing user message record', CONTEXT, SUB_CONTEXT, { sessionId });
+    }
 
     // 2. Handle streaming response
     if (stream) {
@@ -118,10 +125,28 @@ export async function querySession(req, res) {
     }
   } catch (error) {
     logger.error('Error during query execution', CONTEXT, SUB_CONTEXT, { error: error.message });
-    if (!res.headersSent) {
-      return res.error('Failed to query documents', error.message, 500);
+    
+    // Clean up error message if it is stringified JSON (e.g. from Google Gemini API)
+    let userFriendlyMessage = error.message;
+    try {
+      const parsed = JSON.parse(error.message);
+      if (parsed.error?.message) {
+        // Double check if nested
+        try {
+          const inner = JSON.parse(parsed.error.message);
+          userFriendlyMessage = inner.error?.message || parsed.error.message;
+        } catch {
+          userFriendlyMessage = parsed.error.message;
+        }
+      }
+    } catch {
+      // not JSON, use as is
     }
-    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+
+    if (!res.headersSent) {
+      return res.error(userFriendlyMessage, 'QUERY_ERROR', 500);
+    }
+    res.write(`data: ${JSON.stringify({ type: 'error', message: userFriendlyMessage })}\n\n`);
     res.end();
   }
 }

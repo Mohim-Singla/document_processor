@@ -1,9 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, AlertCircle, Quote } from 'lucide-react';
+import { Send, Bot, User, Sparkles, AlertCircle, Quote, RotateCw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-export default function ChatInterface({ messages, onSendMessage, isStreaming, currentStreamText, onSelectCitation }) {
+export default function ChatInterface({
+  messages,
+  onSendMessage,
+  onRetry,
+  isStreaming,
+  currentStreamText,
+  onSelectCitation,
+}) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
 
@@ -38,60 +45,79 @@ export default function ChatInterface({ messages, onSendMessage, isStreaming, cu
           </div>
         )}
 
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`flex items-start gap-3.5 ${msg.sender === 'USER' ? 'justify-end' : 'justify-start'}`}
-          >
-            {msg.sender === 'ASSISTANT' && (
-              <div className="p-2 rounded-xl bg-indigo-500/15 text-indigo-400 shrink-0 mt-0.5">
-                <Bot className="w-4 h-4" />
-              </div>
-            )}
+        {messages.map((msg, idx) => {
+          const isLastMessage = idx === messages.length - 1;
+          const isUnansweredUser = isLastMessage && msg.sender === 'USER' && !isStreaming;
 
-            <div
-              className={`max-w-2xl rounded-2xl p-4 text-xs leading-relaxed ${
-                msg.sender === 'USER'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15'
-                  : 'bg-slate-950/80 border border-slate-800 text-slate-200 shadow-md'
-              }`}
-            >
-              {msg.sender === 'USER' ? (
-                <p className="whitespace-pre-wrap">{msg.content}</p>
-              ) : (
-                <div className="prose prose-invert prose-xs max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {msg.content}
-                  </ReactMarkdown>
+          return (
+            <div key={idx} className="space-y-2">
+              <div
+                className={`flex items-start gap-3.5 ${msg.sender === 'USER' ? 'justify-end' : 'justify-start'}`}
+              >
+                {msg.sender === 'ASSISTANT' && (
+                  <div className="p-2 rounded-xl bg-indigo-500/15 text-indigo-400 shrink-0 mt-0.5">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                )}
+
+                <div
+                  className={`max-w-2xl rounded-2xl p-4 text-xs leading-relaxed ${
+                    msg.sender === 'USER'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15'
+                      : 'bg-slate-950/80 border border-slate-800 text-slate-200 shadow-md'
+                  }`}
+                >
+                  {msg.sender === 'USER' ? (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  ) : (
+                    <div className="prose prose-invert prose-xs max-w-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+
+                  {/* Source Citations */}
+                  {msg.citations && msg.citations.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+                        <Quote className="w-3 h-3 text-indigo-400" /> Sources:
+                      </span>
+                      {msg.citations.map((cite, cIdx) => (
+                        <button
+                          key={cIdx}
+                          onClick={() => onSelectCitation(cite)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[10px] text-slate-300 hover:text-white transition"
+                        >
+                          [{cIdx + 1}] {cite.fileName} {cite.pageNumber ? `(p. ${cite.pageNumber})` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* Source Citations */}
-              {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mr-1 flex items-center gap-1">
-                    <Quote className="w-3 h-3 text-indigo-400" /> Sources:
-                  </span>
-                  {msg.citations.map((cite, cIdx) => (
-                    <button
-                      key={cIdx}
-                      onClick={() => onSelectCitation(cite)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[10px] text-slate-300 hover:text-white transition"
-                    >
-                      [{cIdx + 1}] {cite.fileName} {cite.pageNumber ? `(p. ${cite.pageNumber})` : ''}
-                    </button>
-                  ))}
+                {msg.sender === 'USER' && (
+                  <div className="p-2 rounded-xl bg-slate-800 text-slate-300 shrink-0 mt-0.5">
+                    <User className="w-4 h-4" />
+                  </div>
+                )}
+              </div>
+
+              {/* Retry Action for Unanswered User Message */}
+              {isUnansweredUser && onRetry && (
+                <div className="flex justify-end pr-11">
+                  <button
+                    onClick={() => onRetry(msg.content)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-[11px] font-medium text-indigo-400 hover:text-indigo-300 shadow-sm transition group"
+                  >
+                    <RotateCw className="w-3.5 h-3.5 transition-transform group-hover:rotate-180" />
+                    <span>Retry generating response</span>
+                  </button>
                 </div>
               )}
             </div>
-
-            {msg.sender === 'USER' && (
-              <div className="p-2 rounded-xl bg-slate-800 text-slate-300 shrink-0 mt-0.5">
-                <User className="w-4 h-4" />
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
 
         {/* Live Streaming Response Bubble */}
         {isStreaming && (

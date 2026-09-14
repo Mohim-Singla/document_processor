@@ -113,9 +113,11 @@ export default function SessionWorkspacePage({ session, onBack }) {
     }
   };
 
-  const handleSendMessage = async (prompt) => {
-    const userMsg = { sender: 'USER', content: prompt, citations: [] };
-    setMessages((prev) => [...prev, userMsg]);
+  const handleSendMessage = async (prompt, { isRetry = false } = {}) => {
+    if (!isRetry) {
+      const userMsg = { sender: 'USER', content: prompt, citations: [] };
+      setMessages((prev) => [...prev, userMsg]);
+    }
     setIsStreaming(true);
     setCurrentStreamText('');
 
@@ -133,8 +135,8 @@ export default function SessionWorkspacePage({ session, onBack }) {
         },
         onError: (err) => {
           console.error('Stream error:', err);
-          alert(`Query error: ${err.message}`);
           setIsStreaming(false);
+          setCurrentStreamText('');
         },
         onComplete: () => {
           setMessages((prev) => [
@@ -150,10 +152,14 @@ export default function SessionWorkspacePage({ session, onBack }) {
         },
       });
     } catch (err) {
-      alert(`Query failed: ${err.message}`);
+      console.error('Query failed:', err);
       setIsStreaming(false);
       setCurrentStreamText('');
     }
+  };
+
+  const handleRetryLast = (prompt) => {
+    handleSendMessage(prompt, { isRetry: true });
   };
 
   const handleSelectCitation = (citation) => {
@@ -243,6 +249,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
           <ChatInterface
             messages={messages}
             onSendMessage={handleSendMessage}
+            onRetry={handleRetryLast}
             isStreaming={isStreaming}
             currentStreamText={currentStreamText}
             onSelectCitation={handleSelectCitation}

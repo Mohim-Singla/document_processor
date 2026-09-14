@@ -248,8 +248,11 @@ export async function streamQuery(sessionId, prompt, { onToken, onCitations, onE
             onToken(parsed.content);
           } else if (parsed.type === 'citations' && onCitations) {
             onCitations(parsed.citations);
-          } else if (parsed.type === 'error' && onError) {
-            onError(new Error(parsed.message || 'Stream error'));
+          } else if (parsed.type === 'error') {
+            const err = new Error(parsed.message || 'Stream error');
+            showBackendError(parsed.message || 'Stream error');
+            if (onError) onError(err);
+            return;
           }
         } catch {
           if (onToken) onToken(dataStr);
@@ -259,6 +262,7 @@ export async function streamQuery(sessionId, prompt, { onToken, onCitations, onE
 
     if (onComplete) onComplete();
   } catch (err) {
+    showBackendError(err.message || 'Failed to query session');
     if (onError) onError(err);
     else throw err;
   }

@@ -1,8 +1,5 @@
 import _ from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { serviceConfig } from '../../config/index.js';
 import { mysqlConnection } from '../../db/mysql/connection/index.js';
 
 export const common = {

@@ -56,7 +56,7 @@ export const sqsClient = {
 
   /**
    * Resolves Queue URL: Checks if queue exists on AWS; creates it if it does not exist.
-   * Also configures DLQ (Dead Letter Queue) and attaches RedrivePolicy if specified.
+   * Automatically creates a companion DLQ for standard queues and attaches RedrivePolicy so AWS handles DLQs.
    */
   getOrCreateQueueUrl: async (queueName, options = {}) => {
     const targetQueueName = queueName || sqsClientConfig.QUEUES.DOCUMENT_PROCESSING;
@@ -67,16 +67,37 @@ export const sqsClient = {
     const client = sqsClient.getInstance();
     const SUB_CONTEXT = 'getOrCreateQueueUrl';
 
+    // If this is a main queue (not a DLQ), automatically create its companion DLQ first
+    const isDlq = options.isDlq || targetQueueName.endsWith('_dlq');
+    let deadLetterTargetArn = options.deadLetterTargetArn;
+
+    if (!isDlq && !options.skipDlq && !deadLetterTargetArn) {
+      try {
+        const dlqQueueName = options.dlqName || `${targetQueueName}_dlq`;
+        logger.info(`Ensuring companion DLQ exists for queue: ${targetQueueName} -> ${dlqQueueName}`, CONTEXT, SUB_CONTEXT);
+        const dlqUrl = await sqsClient.getOrCreateQueueUrl(dlqQueueName, {
+          isDlq: true,
+          visibilityTimeout: options.dlqVisibilityTimeout || '300',
+          messageRetentionPeriod: options.dlqMessageRetentionPeriod || '1209600', // 14 days
+        });
+        deadLetterTargetArn = await sqsClient.getQueueArn(dlqUrl);
+      } catch (dlqErr) {
+        logger.warn(`Could not automatically create/resolve companion DLQ for ${targetQueueName}`, CONTEXT, SUB_CONTEXT, {
+          error: dlqErr.message,
+        });
+      }
+    }
+
     const attributes = {
       VisibilityTimeout: options.visibilityTimeout || '300', // 5 minutes processing timeout
-      MessageRetentionPeriod: options.messageRetentionPeriod || (options.isDlq ? '1209600' : '86400'), // 14 days for DLQ, 1 day for source
+      MessageRetentionPeriod: options.messageRetentionPeriod || (isDlq ? '1209600' : '86400'), // 14 days for DLQ, 1 day for source
       ...(options.attributes || {}),
     };
 
-    if (options.deadLetterTargetArn) {
+    if (deadLetterTargetArn) {
       attributes.RedrivePolicy = JSON.stringify({
-        deadLetterTargetArn: options.deadLetterTargetArn,
-        maxReceiveCount: options.maxReceiveCount || 3,
+        deadLetterTargetArn,
+        maxReceiveCount: Number(options.maxReceiveCount || 3),
       });
     }
 
@@ -90,26 +111,29 @@ export const sqsClient = {
       queueUrlMap.set(targetQueueName, queueUrl);
       logger.info(`Found existing SQS queue URL: ${queueUrl}`, CONTEXT, SUB_CONTEXT);
 
-      // If existing queue needs DLQ RedrivePolicy attached and doesn't have it yet
-      if (options.deadLetterTargetArn) {
+      // If queue exists and has a DLQ configured, verify RedrivePolicy is attached
+      if (deadLetterTargetArn) {
         try {
           const attrCmd = new GetQueueAttributesCommand({
             QueueUrl: queueUrl,
             AttributeNames: ['RedrivePolicy'],
           });
           const currentAttrs = await client.send(attrCmd);
-          if (!currentAttrs.Attributes?.RedrivePolicy) {
-            logger.info(`Attaching RedrivePolicy (DLQ) to existing queue ${targetQueueName}`, CONTEXT, SUB_CONTEXT, {
-              deadLetterTargetArn: options.deadLetterTargetArn,
+          const currentRedrivePolicy = currentAttrs.Attributes?.RedrivePolicy;
+          const expectedRedrivePolicy = JSON.stringify({
+            deadLetterTargetArn,
+            maxReceiveCount: Number(options.maxReceiveCount || 3),
+          });
+
+          if (!currentRedrivePolicy || currentRedrivePolicy !== expectedRedrivePolicy) {
+            logger.info(`Attaching/updating RedrivePolicy (DLQ) on existing queue ${targetQueueName}`, CONTEXT, SUB_CONTEXT, {
+              deadLetterTargetArn,
             });
             await client.send(
               new SetQueueAttributesCommand({
                 QueueUrl: queueUrl,
                 Attributes: {
-                  RedrivePolicy: JSON.stringify({
-                    deadLetterTargetArn: options.deadLetterTargetArn,
-                    maxReceiveCount: options.maxReceiveCount || 3,
-                  }),
+                  RedrivePolicy: expectedRedrivePolicy,
                 },
               })
             );
@@ -148,40 +172,17 @@ export const sqsClient = {
 
   /**
    * Initializes and creates all queues defined in the QUEUES constant.
-   * Guarantees DLQs are created first, then sets up source queues with RedrivePolicy pointing to their DLQ.
+   * Companion DLQs are automatically created and wired for each queue.
    */
   initAllQueues: async () => {
     const SUB_CONTEXT = 'initAllQueues';
     const queues = sqsClientConfig.QUEUES;
-    logger.info('Initializing all SQS queues and DLQs on AWS...', CONTEXT, SUB_CONTEXT, { queues });
+    logger.info('Initializing all SQS queues and automatic DLQs on AWS...', CONTEXT, SUB_CONTEXT, { queues });
 
     const results = {};
 
-    // 1. Initialize DLQ first (if configured)
-    let dlqArn = null;
-    if (queues.DOCUMENT_PROCESSING_DLQ) {
-      const dlqUrl = await sqsClient.getOrCreateQueueUrl(queues.DOCUMENT_PROCESSING_DLQ, {
-        isDlq: true,
-        visibilityTimeout: '300',
-        messageRetentionPeriod: '1209600', // Retain failed messages for 14 days
-      });
-      results[queues.DOCUMENT_PROCESSING_DLQ] = dlqUrl;
-      try {
-        dlqArn = await sqsClient.getQueueArn(dlqUrl);
-        logger.info('Resolved DLQ ARN', CONTEXT, SUB_CONTEXT, { dlqArn, dlqUrl });
-      } catch (arnErr) {
-        logger.warn('Failed to retrieve DLQ ARN', CONTEXT, SUB_CONTEXT, { error: arnErr.message });
-      }
-    }
-
-    // 2. Initialize Main/Source queues with RedrivePolicy pointing to DLQ
-    for (const [key, queueName] of Object.entries(queues)) {
-      if (key.endsWith('_DLQ')) continue; // Skip DLQ as it was already initialized
-
-      results[queueName] = await sqsClient.getOrCreateQueueUrl(queueName, {
-        deadLetterTargetArn: dlqArn,
-        maxReceiveCount: 3, // Move to DLQ after 3 failed attempts
-      });
+    for (const queueName of Object.values(queues)) {
+      results[queueName] = await sqsClient.getOrCreateQueueUrl(queueName);
     }
 
     logger.info('All SQS queues and DLQs initialized successfully', CONTEXT, SUB_CONTEXT, { results });
@@ -191,7 +192,7 @@ export const sqsClient = {
   /**
    * Initializes consumer with message handler callback
    */
-  initConsumer: async ({ queueName, handleMessage }) => {
+  initConsumer: async ({ queueName, handleMessage, sqsConsumerOptions = {} }) => {
     const SUB_CONTEXT = 'initConsumer';
     const targetQueueName = queueName || sqsClientConfig.QUEUES.DOCUMENT_PROCESSING;
     const queueUrl = await sqsClient.getOrCreateQueueUrl(targetQueueName);
@@ -203,9 +204,10 @@ export const sqsClient = {
       queueUrl,
       sqs: client,
       shouldDeleteMessages: true,
-      alwaysAcknowledge: true,
+      alwaysAcknowledge: false,
       pollingWaitTimeMs: 0,
       waitTimeSeconds: 0,
+      ...sqsConsumerOptions,
       handleMessage: async (message) => {
         logger.info('Consumer received message from SQS', CONTEXT, SUB_CONTEXT, { messageId: message.MessageId });
         await handleMessage(message);
@@ -219,7 +221,7 @@ export const sqsClient = {
     });
 
     consumer.on('processing_error', (err) => {
-      logger.error('SQS Consumer processing error', CONTEXT, SUB_CONTEXT, { error: err.message });
+      logger.error('SQS Consumer processing error (AWS will retry / redrive to DLQ)', CONTEXT, SUB_CONTEXT, { error: err.message });
     });
 
     consumer.on('timeout_error', (err) => {

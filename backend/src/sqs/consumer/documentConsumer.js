@@ -25,8 +25,8 @@ export async function processDocumentMessage(sqsMessage) {
   try {
     jobData = JSON.parse(sqsMessage.Body);
   } catch (err) {
-    logger.critical('Invalid JSON payload in SQS message', CONTEXT, SUB_CONTEXT, { body: sqsMessage.Body });
-    return true; // Acknowledge bad payload to prevent deadlocks
+    logger.critical('Invalid JSON payload in SQS message', CONTEXT, SUB_CONTEXT, { body: sqsMessage.Body, error: err.message });
+    throw err;
   }
 
   const { documentId, sessionId, userId, s3Key, fileName, mimeType } = jobData;
@@ -107,8 +107,8 @@ export async function processDocumentMessage(sqsMessage) {
       logger.error('Failed to update document status to FAILED', CONTEXT, SUB_CONTEXT, { error: dbErr.message });
     }
 
-    // Return true to remove from SQS if fatal, or throw to retry
-    return true;
+    // Re-throw error so AWS SQS handles retry count and automatic redrive to DLQ
+    throw err;
   }
 }
 

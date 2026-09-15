@@ -111,6 +111,174 @@ export async function getEmbedding(text) {
 }
 
 /**
+ * Computes vector embeddings for a batch of text snippets in a single API call.
+ * Falls back through candidate models on capacity errors just like getEmbedding.
+ *
+ * @param {string[]} texts - Array of text strings to embed
+ * @returns {Promise<number[][]>} Array of embedding vectors in same order as input texts
+ */
+export async function getEmbeddingsBatch(texts) {
+  const SUB_CONTEXT = getEmbeddingsBatch.name;
+
+  if (!texts || texts.length === 0) return [];
+
+  // Single text — delegate to the existing single-embed path
+  if (texts.length === 1) {
+    const embedding = await getEmbedding(texts[0]);
+    return [embedding];
+  }
+
+  if (process.env.ENV === constant.ENVS.TEST) {
+    logger.debug('Returning test mock batch embeddings', CONTEXT, SUB_CONTEXT, { batchSize: texts.length });
+    return texts.map((t) =>
+      new Array(GEMINI_CONFIG.TEST_MOCK_EMBEDDING_DIMENSIONS).fill(0).map((_, i) => Math.sin(i + t.length) * 0.05)
+    );
+  }
+
+  const ai = getAI();
+  const primaryModel = process.env.GEMINI_EMBEDDING_MODEL || GEMINI_CONFIG.DEFAULT_EMBEDDING_MODEL;
+  const candidateModels = [
+    primaryModel,
+    ...GEMINI_CONFIG.EMBEDDING_CANDIDATE_MODELS,
+  ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+
+  for (let idx = 0; idx < candidateModels.length; idx++) {
+    const candidate = candidateModels[idx];
+    const attemptNum = idx + 1;
+    const totalCandidates = candidateModels.length;
+
+    try {
+      logger.info(`Generating batch embeddings via Gemini API [Attempt ${attemptNum}/${totalCandidates}]`, CONTEXT, SUB_CONTEXT, {
+        model: candidate,
+        batchSize: texts.length,
+        attempt: attemptNum,
+        totalAttempts: totalCandidates,
+      });
+
+      const response = await ai.models.embedContent({
+        model: candidate,
+        contents: texts,
+      });
+
+      if (response.embeddings && response.embeddings.length > 0) {
+        const results = response.embeddings.map((e) => e.values || []);
+        logger.info('Batch embeddings generated successfully', CONTEXT, SUB_CONTEXT, {
+          model: candidate,
+          batchSize: texts.length,
+          dimensions: results[0]?.length,
+        });
+        return results;
+      }
+    } catch (err) {
+      const isCapacityError =
+        err.message?.includes('503') ||
+        err.message?.includes('high demand') ||
+        err.message?.includes('UNAVAILABLE') ||
+        err.message?.includes('429') ||
+        err.message?.includes('RESOURCE_EXHAUSTED');
+
+      if (isCapacityError && idx < totalCandidates - 1) {
+        const nextModel = candidateModels[idx + 1];
+        logger.warn(`[RETRYING BATCH EMBEDDING] Model ${candidate} capacity busy. Switching to candidate [${idx + 2}/${totalCandidates}]: ${nextModel}`, CONTEXT, SUB_CONTEXT, {
+          failedModel: candidate,
+          nextModel,
+          attempt: attemptNum,
+          remainingAttempts: totalCandidates - attemptNum,
+          batchSize: texts.length,
+          error: err.message,
+        });
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      if (idx === totalCandidates - 1) {
+        logger.error(`[RETRY EXHAUSTED] All ${totalCandidates} batch embedding candidates failed. Last error: ${err.message}`, CONTEXT, SUB_CONTEXT, {
+          error: err.message,
+          batchSize: texts.length,
+        });
+        throw err;
+      }
+    }
+  }
+
+  logger.warn('Empty batch embedding response received', CONTEXT, SUB_CONTEXT, { batchSize: texts.length });
+  return texts.map(() => []);
+}
+
+/**
+ * High-level helper: computes embeddings for an array of chunks using batched
+ * API calls with controlled concurrency.
+ *
+ * Mutates each chunk in-place by setting `chunk.embedding` and `chunk.userId`.
+ *
+ * @param {Object[]} chunks - Array of chunk objects with `.content` property
+ * @param {string} userId - User ID to set on each chunk
+ * @param {Object} [options]
+ * @param {number} [options.batchSize] - Texts per API call (default from GEMINI_CONFIG)
+ * @param {number} [options.concurrency] - Parallel batch requests (default from GEMINI_CONFIG)
+ * @returns {Promise<Object[]>} The same chunks array with embeddings populated
+ */
+export async function getEmbeddingsForChunks(chunks, userId, options = {}) {
+  const SUB_CONTEXT = getEmbeddingsForChunks.name;
+  if (!chunks || chunks.length === 0) return chunks;
+
+  const batchSize = options.batchSize || GEMINI_CONFIG.EMBEDDING_BATCH_SIZE || 100;
+  const concurrency = options.concurrency || GEMINI_CONFIG.EMBEDDING_BATCH_CONCURRENCY || 5;
+
+  logger.info('Starting batched embedding computation for chunks', CONTEXT, SUB_CONTEXT, {
+    totalChunks: chunks.length,
+    batchSize,
+    concurrency,
+    estimatedBatches: Math.ceil(chunks.length / batchSize),
+  });
+
+  const startTime = Date.now();
+
+  // Split chunks into batches
+  const batches = [];
+  for (let i = 0; i < chunks.length; i += batchSize) {
+    batches.push(chunks.slice(i, i + batchSize));
+  }
+
+  // Process batches with controlled concurrency
+  for (let waveStart = 0; waveStart < batches.length; waveStart += concurrency) {
+    const wave = batches.slice(waveStart, waveStart + concurrency);
+    const waveNumber = Math.floor(waveStart / concurrency) + 1;
+    const totalWaves = Math.ceil(batches.length / concurrency);
+
+    logger.info(`Processing embedding wave ${waveNumber}/${totalWaves}`, CONTEXT, SUB_CONTEXT, {
+      batchesInWave: wave.length,
+      chunksInWave: wave.reduce((sum, b) => sum + b.length, 0),
+    });
+
+    const waveResults = await Promise.all(
+      wave.map((batch) => getEmbeddingsBatch(batch.map((c) => c.content)))
+    );
+
+    // Assign embeddings back to chunks
+    for (let batchIdx = 0; batchIdx < wave.length; batchIdx++) {
+      const batch = wave[batchIdx];
+      const embeddings = waveResults[batchIdx];
+      for (let j = 0; j < batch.length; j++) {
+        batch[j].userId = userId;
+        batch[j].embedding = embeddings[j] || [];
+      }
+    }
+
+    // Yield event loop between waves so HTTP requests stay responsive
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  logger.info('Batched embedding computation completed', CONTEXT, SUB_CONTEXT, {
+    totalChunks: chunks.length,
+    totalBatches: batches.length,
+    elapsedSeconds: elapsed,
+  });
+
+  return chunks;
+}
+
+/**
  * Streams conversational RAG answer given user prompt and relevant context chunks
  */
 export async function* streamRagCompletion({ prompt, contextChunks = [] }) {
@@ -337,6 +505,8 @@ export async function generateDocumentSummary(rawText) {
 
 export const geminiService = {
   getEmbedding,
+  getEmbeddingsBatch,
+  getEmbeddingsForChunks,
   generateDocumentSummary,
   streamRagCompletion,
 };

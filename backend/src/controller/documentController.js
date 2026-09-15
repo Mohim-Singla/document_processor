@@ -122,14 +122,7 @@ export async function uploadDocuments(req, res) {
 
             const [summary] = await Promise.all([
               geminiService.generateDocumentSummary(rawText),
-              (async () => {
-                for (let i = 0; i < chunks.length; i++) {
-                  const chunk = chunks[i];
-                  chunk.userId = userId;
-                  chunk.embedding = await geminiService.getEmbedding(chunk.content);
-                }
-                return chunks;
-              })(),
+              geminiService.getEmbeddingsForChunks(chunks, userId),
             ]);
 
             if (chunks.length > 0) {

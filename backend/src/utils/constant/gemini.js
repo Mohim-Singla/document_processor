@@ -3,8 +3,8 @@ export const GEMINI_CONFIG = {
   DEFAULT_LLM_MODEL: 'gemini-3.5-flash',
   EMBEDDING_CANDIDATE_MODELS: [
     'gemini-embedding-001',
+    'gemini-embedding-2',
     'text-embedding-004',
-    'gemini-embedding-exp-03-07',
   ],
   LLM_CANDIDATE_MODELS: [
     'gemini-3.5-flash',
@@ -17,5 +17,6 @@ export const GEMINI_CONFIG = {
   TEST_MOCK_EMBEDDING_DIMENSIONS: 768,
   RETRY_DELAY_MS: 200,
   EMBEDDING_BATCH_SIZE: 50,
-  EMBEDDING_BATCH_CONCURRENCY: 5,
+  EMBEDDING_BATCH_CONCURRENCY: 2,
+  EMBEDDING_RATE_LIMIT_DELAY_MS: 200,
 };

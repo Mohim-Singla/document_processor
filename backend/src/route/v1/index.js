@@ -62,6 +62,7 @@ router.delete('/sessions/:id', authenticateToken, sessionController.deleteSessio
 router.get('/sessions/:id/documents', authenticateToken, documentController.listDocuments);
 router.post('/sessions/:id/documents', authenticateToken, handleUpload, documentController.uploadDocuments);
 router.get('/sessions/:id/documents/:docId/preview', authenticateToken, documentController.getPreviewUrl);
+router.post('/sessions/:id/documents/:docId/retry', authenticateToken, documentController.retryDocument);
 router.delete('/sessions/:id/documents/:docId', authenticateToken, documentController.deleteDocument);
 
 // Protected Query & Chat Endpoints

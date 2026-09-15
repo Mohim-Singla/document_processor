@@ -9,6 +9,16 @@ import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'documentController';
 
+function sanitizeDocument(doc) {
+  if (!doc) return doc;
+  if (Array.isArray(doc)) {
+    return doc.map(sanitizeDocument);
+  }
+  const plainDoc = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  delete plainDoc.errorMessage;
+  return plainDoc;
+}
+
 export async function listDocuments(req, res) {
   const SUB_CONTEXT = listDocuments.name;
   try {
@@ -26,7 +36,7 @@ export async function listDocuments(req, res) {
 
     const documents = await mongoRepositories.documents.fetchAll({ sessionId, userId });
     logger.info('Documents listed successfully', CONTEXT, SUB_CONTEXT, { sessionId, count: documents.length });
-    return res.success('Documents fetched successfully', documents);
+    return res.success('Documents fetched successfully', sanitizeDocument(documents));
   } catch (error) {
     logger.error('Error fetching documents', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to fetch documents', error.message, 500);
@@ -146,7 +156,7 @@ export async function uploadDocuments(req, res) {
       }
     }
 
-    return res.success('Documents uploaded and processing started', createdDocs, 202);
+    return res.success('Documents uploaded and processing started', sanitizeDocument(createdDocs), 202);
   } catch (error) {
     logger.error('Error uploading documents', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to upload documents', error.message, 500);
@@ -207,9 +217,108 @@ export async function deleteDocument(req, res) {
   }
 }
 
+export async function retryDocument(req, res) {
+  const SUB_CONTEXT = retryDocument.name;
+  try {
+    const { id: sessionId, docId } = req.params;
+    const userId = req.user.userId;
+
+    logger.info('Retrying document ingestion', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
+
+    // IDOR Check: Ensure document belongs to this user and session
+    const document = await mongoRepositories.documents.fetchOne({ documentId: docId, sessionId, userId });
+
+    if (!document) {
+      logger.warn('Document not found or unauthorized for retry', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
+      return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
+    }
+
+    // Clean up any previously stored chunks from prior failed attempt
+    await mongoRepositories.documentChunks.softDeleteByDocument(docId, { userId });
+
+    // Reset status to PROCESSING and clear error message
+    const updatedDoc = await mongoRepositories.documents.update(
+      { documentId: docId, userId },
+      { status: DOCUMENT_STATUS.PROCESSING, errorMessage: null }
+    );
+
+    // Queue job via AWS SQS for worker processing (with fallback)
+    const jobPayload = {
+      documentId: document.documentId,
+      sessionId: document.sessionId,
+      userId,
+      s3Key: document.s3Key,
+      fileName: document.fileName,
+      mimeType: document.mimeType,
+    };
+
+    try {
+      await sqsProducer.sendDocumentJob(jobPayload);
+      logger.info('Document retry job queued via SQS successfully', CONTEXT, SUB_CONTEXT, { documentId: docId });
+    } catch (sqsErr) {
+      logger.warn('Failed to queue retry to SQS. Falling back to in-process ingestion', CONTEXT, SUB_CONTEXT, {
+        documentId: docId,
+        error: sqsErr.message,
+      });
+
+      // In-process fallback
+      (async () => {
+        const INGEST_SUB_CONTEXT = 'processAsyncDocumentRetryFallback';
+        try {
+          logger.info('Starting local fallback document retry ingestion', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId });
+          const buffer = await s3Service.getObjectBuffer({ key: document.s3Key });
+
+          const { pageCount, rawText, chunks } = await parsingService.parseDocument({
+            buffer,
+            fileName: document.fileName,
+            mimeType: document.mimeType,
+            documentId: document.documentId,
+            sessionId: document.sessionId,
+          });
+
+          const [summary] = await Promise.all([
+            geminiService.generateDocumentSummary(rawText),
+            (async () => {
+              for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                chunk.userId = userId;
+                chunk.embedding = await geminiService.getEmbedding(chunk.content);
+              }
+              return chunks;
+            })(),
+          ]);
+
+          if (chunks.length > 0) {
+            await mongoRepositories.documentChunks.bulkInsert(chunks);
+          }
+
+          await mongoRepositories.documents.update(
+            { documentId: docId, userId },
+            { status: DOCUMENT_STATUS.READY, pageCount, summary, errorMessage: null }
+          );
+
+          logger.info('Local fallback document retry ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId });
+        } catch (fallbackErr) {
+          logger.error('Local fallback document retry ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId, error: fallbackErr.message });
+          await mongoRepositories.documents.update(
+            { documentId: docId, userId },
+            { status: DOCUMENT_STATUS.FAILED, errorMessage: fallbackErr.message }
+          );
+        }
+      })();
+    }
+
+    return res.success('Document retry scheduled successfully', sanitizeDocument(updatedDoc), 200);
+  } catch (error) {
+    logger.error('Error retrying document', CONTEXT, SUB_CONTEXT, { error: error.message });
+    return res.error('Failed to retry document', error.message, 500);
+  }
+}
+
 export const documentController = {
   listDocuments,
   uploadDocuments,
   getPreviewUrl,
   deleteDocument,
+  retryDocument,
 };

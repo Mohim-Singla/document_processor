@@ -188,6 +188,12 @@ export async function getDocumentPreviewUrl(sessionId, documentId) {
   return fetchApi(`/sessions/${sessionId}/documents/${documentId}/preview`);
 }
 
+export async function retryDocument(sessionId, documentId) {
+  return fetchApi(`/sessions/${sessionId}/documents/${documentId}/retry`, {
+    method: 'POST',
+  });
+}
+
 export async function deleteDocument(sessionId, documentId) {
   return fetchApi(`/sessions/${sessionId}/documents/${documentId}`, {
     method: 'DELETE',

@@ -9,6 +9,7 @@ import {
   getSessionDocuments,
   uploadDocuments,
   getDocumentPreviewUrl,
+  retryDocument,
   deleteDocument,
   getSessionMessages,
   streamQuery,
@@ -113,6 +114,20 @@ export default function SessionWorkspacePage({ session, onBack }) {
     }
   };
 
+  const handleRetryDoc = async (docId) => {
+    try {
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.documentId === docId ? { ...d, status: 'PROCESSING', errorMessage: null } : d
+        )
+      );
+      await retryDocument(session.sessionId, docId);
+    } catch (err) {
+      console.error('Failed to retry document:', err);
+      loadSessionData();
+    }
+  };
+
   const handleSendMessage = async (prompt, { isRetry = false } = {}) => {
     if (!isRetry) {
       const userMsg = { sender: 'USER', content: prompt, citations: [] };
@@ -204,7 +219,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
       {/* Main Workspace Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Documents Sidebar */}
-        <aside className="w-80 border-r border-slate-800/80 p-5 flex flex-col justify-between bg-slate-900/30 overflow-y-auto shrink-0">
+        <aside className="w-84 xl:w-92 border-r border-slate-800/80 p-5 flex flex-col justify-between bg-slate-900/30 overflow-y-auto shrink-0">
           <div className="space-y-5">
             <div>
               <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
@@ -236,6 +251,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
                       doc={doc}
                       onPreview={() => handlePreviewDoc(doc)}
                       onDelete={(docId) => setDeleteTargetDocId(docId)}
+                      onRetry={handleRetryDoc}
                     />
                   ))
                 )}

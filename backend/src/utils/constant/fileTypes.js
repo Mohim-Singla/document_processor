@@ -22,6 +22,6 @@ export const ALLOWED_FILE_EXTENSIONS = new Set([
 ]);
 
 export const UPLOAD_LIMITS = {
-  MAX_FILE_SIZE_BYTES: 1 * 1024 * 1024, // 1 MB
-  MAX_FILES: 4,
+  MAX_FILE_SIZE_BYTES: 10 * 1024 * 1024, // 10 MB
+  MAX_FILES: 5,
 };

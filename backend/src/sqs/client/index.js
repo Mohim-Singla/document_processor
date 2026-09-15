@@ -7,6 +7,7 @@ import {
 } from '@aws-sdk/client-sqs';
 import { Consumer } from 'sqs-consumer';
 import { sqsClientConfig } from '../../config/sqs/sqsClientConfig.js';
+import { AWS_CONFIG } from '../../utils/constant/index.js';
 import { logger } from '../../utils/logger.js';
 
 const CONTEXT = 'sqsClient';
@@ -97,7 +98,7 @@ export const sqsClient = {
     if (deadLetterTargetArn) {
       attributes.RedrivePolicy = JSON.stringify({
         deadLetterTargetArn,
-        maxReceiveCount: Number(options.maxReceiveCount || 3),
+        maxReceiveCount: Number(options.maxReceiveCount || AWS_CONFIG.DEFAULT_MAX_RECEIVE_COUNT || 2),
       });
     }
 
@@ -122,7 +123,7 @@ export const sqsClient = {
           const currentRedrivePolicy = currentAttrs.Attributes?.RedrivePolicy;
           const expectedRedrivePolicy = JSON.stringify({
             deadLetterTargetArn,
-            maxReceiveCount: Number(options.maxReceiveCount || 3),
+            maxReceiveCount: Number(options.maxReceiveCount || AWS_CONFIG.DEFAULT_MAX_RECEIVE_COUNT || 2),
           });
 
           if (!currentRedrivePolicy || currentRedrivePolicy !== expectedRedrivePolicy) {

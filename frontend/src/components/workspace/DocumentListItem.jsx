@@ -49,10 +49,8 @@ export default function DocumentListItem({ doc, onPreview, onDelete }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
-        {getStatusBadge(doc.status)}
-
-        <div className="flex items-center opacity-0 group-hover:opacity-100 transition">
+      <div className="flex items-center gap-2 shrink-0 ml-auto">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {doc.status === 'READY' && onPreview && (
             <button
               onClick={() => onPreview(doc)}
@@ -71,6 +69,10 @@ export default function DocumentListItem({ doc, onPreview, onDelete }) {
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
+
+        <div className="flex justify-end">
+          {getStatusBadge(doc.status)}
         </div>
       </div>
     </div>

@@ -13,6 +13,32 @@ export default function ChatInterface({
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Auto-focus the input when user starts typing anywhere on the page
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Skip if modifier keys are held (allow browser/OS shortcuts)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // Skip if already focused on an interactive element
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      const isEditable = document.activeElement?.isContentEditable;
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || isEditable) return;
+
+      // Skip non-printable keys (arrows, function keys, Escape, Tab, etc.)
+      if (e.key.length !== 1) return;
+
+      // Skip if streaming (input is disabled)
+      if (isStreaming) return;
+
+      // Focus the input — the browser will naturally insert the typed character
+      inputRef.current?.focus();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isStreaming]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -146,6 +172,7 @@ export default function ChatInterface({
       <form onSubmit={handleSubmit} className="p-4 bg-slate-950 border-t border-slate-800/80">
         <div className="relative flex items-center">
           <input
+            ref={inputRef}
             type="text"
             placeholder="Ask a question about the uploaded documents in this session..."
             value={input}

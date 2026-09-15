@@ -18,6 +18,7 @@ const schema = new mongoose.Schema(
       index: true,
     },
     pageCount: { type: Number, default: 0 },
+    summary: { type: String, default: null },
     errorMessage: { type: String, default: null },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },

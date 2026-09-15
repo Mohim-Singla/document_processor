@@ -48,7 +48,7 @@ export async function processDocumentMessage(sqsMessage) {
     const buffer = await s3Service.getObjectBuffer({ key: s3Key });
 
     // 2. Parse / OCR document into chunks
-    const { pageCount, chunks } = await parsingService.parseDocument({
+    const { pageCount, rawText, chunks } = await parsingService.parseDocument({
       buffer,
       fileName,
       mimeType,
@@ -58,36 +58,43 @@ export async function processDocumentMessage(sqsMessage) {
 
     logger.info('Document parsed by worker', CONTEXT, SUB_CONTEXT, { documentId, chunkCount: chunks.length, pageCount });
 
-    // 3. Compute vector embeddings for each chunk (yielding to event loop to keep server responsive)
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      chunk.userId = userId;
-      chunk.embedding = await geminiService.getEmbedding(chunk.content);
-      logger.debug('Worker computed chunk embedding', CONTEXT, SUB_CONTEXT, {
-        documentId,
-        chunkIndex: i + 1,
-        totalChunks: chunks.length,
-      });
+    // 3. Parallel Execution: Generate high-level summary and compute chunk embeddings concurrently
+    const [summary] = await Promise.all([
+      geminiService.generateDocumentSummary(rawText),
+      (async () => {
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          chunk.userId = userId;
+          chunk.embedding = await geminiService.getEmbedding(chunk.content);
+          logger.debug('Worker computed chunk embedding', CONTEXT, SUB_CONTEXT, {
+            documentId,
+            chunkIndex: i + 1,
+            totalChunks: chunks.length,
+          });
 
-      // Yield event loop every chunk to give HTTP requests top priority
-      await new Promise((resolve) => setImmediate(resolve));
-    }
+          // Yield event loop every chunk to give HTTP requests top priority
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        return chunks;
+      })(),
+    ]);
 
     // 4. Bulk insert chunks into MongoDB
     if (chunks.length > 0) {
       await mongoRepositories.documentChunks.bulkInsert(chunks);
     }
 
-    // 5. Update document status to READY
+    // 5. Update document status to READY and persist summary
     await mongoRepositories.documents.update(
       { documentId, userId },
-      { status: DOCUMENT_STATUS.READY, pageCount }
+      { status: DOCUMENT_STATUS.READY, pageCount, summary }
     );
 
     logger.info('Document worker successfully completed ingestion', CONTEXT, SUB_CONTEXT, {
       documentId,
       status: DOCUMENT_STATUS.READY,
       chunkCount: chunks.length,
+      hasSummary: Boolean(summary),
     });
 
     return true; // Message acknowledged and removed from queue

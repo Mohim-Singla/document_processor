@@ -1,5 +1,6 @@
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { geminiService } from './geminiService.js';
+import { RAG_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'ragService';
@@ -23,7 +24,7 @@ function cosineSimilarity(vecA, vecB) {
  * Implements document-fair diversified selection to ensure multi-document sessions
  * don't have one document completely crowd out the others.
  */
-export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 10 }) {
+export async function retrieveRelevantChunks({ sessionId, userId, query, topK = RAG_CONFIG.DEFAULT_TOP_K }) {
   const SUB_CONTEXT = retrieveRelevantChunks.name;
   logger.info('Retrieving relevant chunks for RAG search', CONTEXT, SUB_CONTEXT, { sessionId, userId, topK });
 
@@ -50,8 +51,8 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
     } else {
       const lowerQuery = query.toLowerCase();
       const lowerContent = chunk.content.toLowerCase();
-      if (lowerContent.includes(lowerQuery)) score = 0.8;
-      else score = 0.1;
+      if (lowerContent.includes(lowerQuery)) score = RAG_CONFIG.KEYWORD_MATCH_FALLBACK_SCORE;
+      else score = RAG_CONFIG.DEFAULT_FALLBACK_SCORE;
     }
     return {
       ...chunk,

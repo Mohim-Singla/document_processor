@@ -112,7 +112,7 @@ export async function uploadDocuments(req, res) {
           try {
             logger.info('Starting local fallback document ingestion', CONTEXT, INGEST_SUB_CONTEXT, { documentId, fileName: file.originalname });
 
-            const { pageCount, chunks } = await parsingService.parseDocument({
+            const { pageCount, rawText, chunks } = await parsingService.parseDocument({
               buffer: file.buffer,
               fileName: file.originalname,
               mimeType: file.mimetype,
@@ -120,11 +120,17 @@ export async function uploadDocuments(req, res) {
               sessionId,
             });
 
-            for (let i = 0; i < chunks.length; i++) {
-              const chunk = chunks[i];
-              chunk.userId = userId;
-              chunk.embedding = await geminiService.getEmbedding(chunk.content);
-            }
+            const [summary] = await Promise.all([
+              geminiService.generateDocumentSummary(rawText),
+              (async () => {
+                for (let i = 0; i < chunks.length; i++) {
+                  const chunk = chunks[i];
+                  chunk.userId = userId;
+                  chunk.embedding = await geminiService.getEmbedding(chunk.content);
+                }
+                return chunks;
+              })(),
+            ]);
 
             if (chunks.length > 0) {
               await mongoRepositories.documentChunks.bulkInsert(chunks);
@@ -132,10 +138,10 @@ export async function uploadDocuments(req, res) {
 
             await mongoRepositories.documents.update(
               { documentId, userId },
-              { status: DOCUMENT_STATUS.READY, pageCount }
+              { status: DOCUMENT_STATUS.READY, pageCount, summary }
             );
 
-            logger.info('Local fallback document ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId });
+            logger.info('Local fallback document ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, hasSummary: Boolean(summary) });
           } catch (fallbackErr) {
             logger.error('Local fallback document ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, error: fallbackErr.message });
             await mongoRepositories.documents.update(

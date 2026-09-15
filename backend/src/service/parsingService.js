@@ -2,6 +2,7 @@ import PDFParser from 'pdf2json';
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { v4 as uuidv4 } from 'uuid';
+import { CHUNKING_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'parsingService';
@@ -102,14 +103,21 @@ const setImmediatePromise = () => new Promise((resolve) => setImmediate(resolve)
 /**
  * Splits text into chunks with token overlap in an event-loop cooperative manner
  */
-export async function chunkText(text, { chunkSize = 1200, overlap = 200, maxChunks = 300 } = {}) {
+export async function chunkText(
+  text,
+  {
+    chunkSize = CHUNKING_CONFIG.DEFAULT_CHUNK_SIZE,
+    overlap = CHUNKING_CONFIG.DEFAULT_OVERLAP,
+    maxChunks = CHUNKING_CONFIG.DEFAULT_MAX_CHUNKS,
+  } = {}
+) {
   const chunks = [];
   let startIndex = 0;
   let iteration = 0;
 
   while (startIndex < text.length && chunks.length < maxChunks) {
-    // Yield execution to the Node.js event loop every 50 iterations so HTTP requests and other I/O are never blocked
-    if (++iteration % 50 === 0) {
+    // Yield execution to the Node.js event loop every N iterations so HTTP requests and other I/O are never blocked
+    if (++iteration % CHUNKING_CONFIG.EVENT_LOOP_YIELD_INTERVAL === 0) {
       await setImmediatePromise();
     }
 
@@ -120,12 +128,12 @@ export async function chunkText(text, { chunkSize = 1200, overlap = 200, maxChun
     }
 
     // Try to break cleanly on paragraph or sentence boundary
-    const nextNewline = text.indexOf('\n\n', endIndex - 150);
-    if (nextNewline !== -1 && nextNewline < endIndex + 100) {
+    const nextNewline = text.indexOf('\n\n', endIndex - CHUNKING_CONFIG.PARAGRAPH_LOOKBACK);
+    if (nextNewline !== -1 && nextNewline < endIndex + CHUNKING_CONFIG.PARAGRAPH_LOOKAHEAD) {
       endIndex = nextNewline;
     } else {
-      const nextPeriod = text.indexOf('. ', endIndex - 100);
-      if (nextPeriod !== -1 && nextPeriod < endIndex + 50) {
+      const nextPeriod = text.indexOf('. ', endIndex - CHUNKING_CONFIG.SENTENCE_LOOKBACK);
+      if (nextPeriod !== -1 && nextPeriod < endIndex + CHUNKING_CONFIG.SENTENCE_LOOKAHEAD) {
         endIndex = nextPeriod + 1;
       }
     }
@@ -177,12 +185,16 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
 
   const documentChunks = [];
   let chunkIndexCounter = 0;
-  const MAX_TOTAL_DOCUMENT_CHUNKS = 250;
+  const maxTotalChunks = CHUNKING_CONFIG.MAX_TOTAL_DOCUMENT_CHUNKS;
 
   for (const page of pages) {
-    if (documentChunks.length >= MAX_TOTAL_DOCUMENT_CHUNKS) break;
-    const remainingBudget = MAX_TOTAL_DOCUMENT_CHUNKS - documentChunks.length;
-    const textChunks = await chunkText(page.text, { maxChunks: remainingBudget });
+    if (documentChunks.length >= maxTotalChunks) break;
+    const remainingBudget = maxTotalChunks - documentChunks.length;
+    const textChunks = await chunkText(page.text, {
+      chunkSize: CHUNKING_CONFIG.DEFAULT_CHUNK_SIZE,
+      overlap: CHUNKING_CONFIG.DEFAULT_OVERLAP,
+      maxChunks: remainingBudget,
+    });
     for (const chunkTextContent of textChunks) {
       if (!chunkTextContent) continue;
       documentChunks.push({
@@ -197,18 +209,22 @@ export async function parseDocument({ buffer, fileName, mimeType, documentId, se
           fileName,
         },
       });
-      if (documentChunks.length >= MAX_TOTAL_DOCUMENT_CHUNKS) break;
+      if (documentChunks.length >= CHUNKING_CONFIG.MAX_TOTAL_DOCUMENT_CHUNKS) break;
     }
   }
+
+  const fullRawText = pages.map((p) => p.text).filter(Boolean).join('\n\n');
 
   logger.info('Document parsing completed', CONTEXT, SUB_CONTEXT, {
     fileName,
     totalPageCount,
     totalChunks: documentChunks.length,
+    rawTextLength: fullRawText.length,
   });
 
   return {
     pageCount: totalPageCount,
+    rawText: fullRawText,
     chunks: documentChunks,
   };
 }

@@ -1,10 +1,11 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { AWS_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 's3Service';
-const region = process.env.AWS_REGION || 'ap-south-1';
-const bucketName = process.env.AWS_S3_BUCKET_NAME || 's3-document-processor';
+const region = process.env.AWS_REGION || AWS_CONFIG.DEFAULT_REGION;
+const bucketName = process.env.AWS_S3_BUCKET_NAME || AWS_CONFIG.DEFAULT_BUCKET_NAME;
 
 let s3Client = null;
 
@@ -57,7 +58,7 @@ export async function uploadToS3({ key, buffer, mimeType }) {
   };
 }
 
-export async function getPresignedDownloadUrl({ key, expiresInSeconds = 900 }) {
+export async function getPresignedDownloadUrl({ key, expiresInSeconds = AWS_CONFIG.PRESIGNED_URL_EXPIRY_SECONDS }) {
   const SUB_CONTEXT = getPresignedDownloadUrl.name;
   logger.info('Generating presigned download URL', CONTEXT, SUB_CONTEXT, { bucketName, key, expiresInSeconds });
 

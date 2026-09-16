@@ -21,30 +21,51 @@ function cosineSimilarity(vecA, vecB) {
 
 /**
  * Searches top K chunks for a session given a query, scoped by owner userId to prevent IDOR.
- * Implements document-fair diversified selection to ensure multi-document sessions
- * don't have one document completely crowd out the others.
+ * Filters exclusively for active (non-deleted) documents and uses dynamic similarity
+ * thresholding to prevent unrelated documents from contaminating query context and citations.
  */
 export async function retrieveRelevantChunks({ sessionId, userId, query, topK = RAG_CONFIG.DEFAULT_TOP_K }) {
   const SUB_CONTEXT = retrieveRelevantChunks.name;
   logger.info('Retrieving relevant chunks for RAG search', CONTEXT, SUB_CONTEXT, { sessionId, userId, topK });
 
-  const filter = {};
+  const docFilter = { sessionId, isDeleted: false };
   if (userId) {
-    filter.userId = userId;
+    docFilter.userId = userId;
   }
 
-  // Fetch only chunks owned by this user for this session
-  const allChunks = await mongoRepositories.documentChunks.findBySession(sessionId, filter);
+  // 1. Fetch active documents in session to construct document name mapping and filter orphan chunks
+  const activeDocs = await mongoRepositories.documents.fetchAll(docFilter);
+  if (!activeDocs || activeDocs.length === 0) {
+    logger.warn('No active documents found for session', CONTEXT, SUB_CONTEXT, { sessionId });
+    return [];
+  }
+
+  const activeDocMap = new Map(activeDocs.map((d) => [d.documentId, d.fileName]));
+
+  // 2. Fetch chunks owned by this user for this session
+  const chunkFilter = {};
+  if (userId) {
+    chunkFilter.userId = userId;
+  }
+
+  const allChunks = await mongoRepositories.documentChunks.findBySession(sessionId, chunkFilter);
   if (!allChunks || allChunks.length === 0) {
     logger.warn('No document chunks available for session', CONTEXT, SUB_CONTEXT, { sessionId });
     return [];
   }
 
-  // Generate query embedding
+  // Keep only chunks belonging to active documents in this session
+  const activeChunks = allChunks.filter((chunk) => activeDocMap.has(chunk.documentId));
+  if (activeChunks.length === 0) {
+    logger.warn('No active document chunks found for session', CONTEXT, SUB_CONTEXT, { sessionId });
+    return [];
+  }
+
+  // 3. Generate query embedding
   const queryEmbedding = await geminiService.getEmbedding(query);
 
-  // Compute similarity score for each chunk
-  const scoredChunks = allChunks.map((chunk) => {
+  // 4. Compute similarity score for each active chunk
+  const scoredChunks = activeChunks.map((chunk) => {
     let score = 0;
     if (chunk.embedding && chunk.embedding.length > 0) {
       score = cosineSimilarity(queryEmbedding, chunk.embedding);
@@ -57,51 +78,34 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
     return {
       ...chunk,
       score,
-      fileName: chunk.metadata?.fileName || 'Document',
+      fileName: activeDocMap.get(chunk.documentId) || chunk.metadata?.fileName || 'Document',
     };
   });
 
-  // Group chunks by documentId to ensure multi-document fairness
-  const byDoc = {};
-  for (const chunk of scoredChunks) {
-    const docId = chunk.documentId || 'unknown';
-    if (!byDoc[docId]) {
-      byDoc[docId] = [];
-    }
-    byDoc[docId].push(chunk);
+  // 5. Sort all chunks descending by similarity score
+  scoredChunks.sort((a, b) => b.score - a.score);
+
+  const topScore = scoredChunks[0]?.score || 0;
+  const minThreshold = RAG_CONFIG.MIN_SIMILARITY_THRESHOLD || 0.45;
+  const relativeThreshold = RAG_CONFIG.RELATIVE_SCORE_THRESHOLD || 0.70;
+
+  // Dynamic threshold: Chunks must meet both the minimum baseline and be within relative range of topScore
+  const dynamicThreshold = Math.max(minThreshold, topScore * relativeThreshold);
+
+  let selected = scoredChunks.filter((c) => c.score >= dynamicThreshold).slice(0, topK);
+
+  // If no chunks pass the strict threshold, fallback to highest scoring chunks above fallback score
+  if (selected.length === 0 && scoredChunks.length > 0) {
+    selected = scoredChunks.filter((c) => c.score >= RAG_CONFIG.DEFAULT_FALLBACK_SCORE).slice(0, Math.min(3, topK));
   }
 
-  // Sort chunks within each document descending by score
-  for (const docId of Object.keys(byDoc)) {
-    byDoc[docId].sort((a, b) => b.score - a.score);
-  }
-
-  // Round-robin selection across distinct documents until topK is satisfied
-  const selected = [];
-  const docIds = Object.keys(byDoc);
-  let round = 0;
-  let addedInRound = true;
-
-  while (selected.length < topK && addedInRound) {
-    addedInRound = false;
-    for (const docId of docIds) {
-      if (round < byDoc[docId].length) {
-        selected.push(byDoc[docId][round]);
-        addedInRound = true;
-        if (selected.length >= topK) break;
-      }
-    }
-    round++;
-  }
-
-  // Final sort of selected excerpts by score descending
-  selected.sort((a, b) => b.score - a.score);
-
-  logger.info('Document-fair relevant chunks scored and selected', CONTEXT, SUB_CONTEXT, {
-    totalEvaluated: allChunks.length,
-    documentCount: docIds.length,
+  logger.info('Relevant chunks scored and filtered', CONTEXT, SUB_CONTEXT, {
+    totalEvaluated: activeChunks.length,
+    activeDocumentsCount: activeDocMap.size,
+    topScore,
+    dynamicThreshold,
     selectedCount: selected.length,
-    topScore: selected[0]?.score,
+    selectedSources: [...new Set(selected.map((c) => c.fileName))],
   });
 
   return selected;

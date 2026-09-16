@@ -33,9 +33,19 @@ export async function processDocumentMessage(sqsMessage) {
   logger.info('Processing document job from SQS', CONTEXT, SUB_CONTEXT, { documentId, sessionId, fileName });
 
   try {
-    // 0. Idempotency check: If document already processed and READY, skip and acknowledge
-    const existingDoc = await mongoRepositories.documents.fetchOne({ documentId });
-    if (existingDoc && existingDoc.status === DOCUMENT_STATUS.READY) {
+    // 0. Active check & Idempotency: If document or parent session is deleted, skip and acknowledge
+    const existingDoc = await mongoRepositories.documents.fetchOne({ documentId, isDeleted: false });
+    const existingSession = await mongoRepositories.sessions.fetchOne({ sessionId, isDeleted: false });
+
+    if (!existingDoc || !existingSession) {
+      logger.info('Document or parent session no longer active. Skipping worker ingestion and discarding job.', CONTEXT, SUB_CONTEXT, {
+        documentId,
+        sessionId,
+      });
+      return true;
+    }
+
+    if (existingDoc.status === DOCUMENT_STATUS.READY) {
       logger.info('Document already marked as READY/completed. Skipping processing.', CONTEXT, SUB_CONTEXT, {
         documentId,
         sessionId,

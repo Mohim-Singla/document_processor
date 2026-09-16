@@ -37,14 +37,6 @@ export async function querySession(req, res) {
       topK: 5,
     });
 
-    const citations = relevantChunks.map((c) => ({
-      documentId: c.documentId,
-      fileName: c.fileName || 'Document',
-      pageNumber: c.pageNumber || 1,
-      snippet: c.content.slice(0, 300),
-      score: c.score,
-    }));
-
     logger.info('Found relevant chunks for context', CONTEXT, SUB_CONTEXT, { chunkCount: relevantChunks.length });
 
     // Record user message with owner userId if not a retry of the last unanswered message
@@ -63,6 +55,27 @@ export async function querySession(req, res) {
     } else {
       logger.info('Retrying last unanswered prompt - reusing existing user message record', CONTEXT, SUB_CONTEXT, { sessionId });
     }
+
+    const extractUsedCitations = (fullReply) => {
+      const citationMatches = [...fullReply.matchAll(/\[(\d+)\]/g)];
+      const citedIndices = new Set(
+        citationMatches
+          .map((m) => parseInt(m[1], 10))
+          .filter((n) => n >= 1 && n <= relevantChunks.length)
+      );
+
+      const usedChunks = citedIndices.size > 0
+        ? relevantChunks.filter((_, idx) => citedIndices.has(idx + 1))
+        : relevantChunks;
+
+      return usedChunks.map((c) => ({
+        documentId: c.documentId,
+        fileName: c.fileName || 'Document',
+        pageNumber: c.pageNumber || 1,
+        snippet: c.content.slice(0, 300),
+        score: c.score,
+      }));
+    };
 
     // 2. Handle streaming response
     if (stream) {
@@ -83,6 +96,8 @@ export async function querySession(req, res) {
         res.write(`data: ${JSON.stringify({ type: 'token', content: token })}\n\n`);
       }
 
+      const citations = extractUsedCitations(fullAssistantReply);
+
       // Send citations at end of stream
       res.write(`data: ${JSON.stringify({ type: 'citations', citations })}\n\n`);
       res.write('data: [DONE]\n\n');
@@ -98,7 +113,7 @@ export async function querySession(req, res) {
         citations,
       });
 
-      logger.info('Streaming query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId, replyLength: fullAssistantReply.length });
+      logger.info('Streaming query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId, replyLength: fullAssistantReply.length, citationCount: citations.length });
     } else {
       let fullAssistantReply = '';
       const generator = geminiService.streamRagCompletion({
@@ -109,6 +124,8 @@ export async function querySession(req, res) {
         fullAssistantReply += token;
       }
 
+      const citations = extractUsedCitations(fullAssistantReply);
+
       await mongoRepositories.chatMessages.create({
         messageId: uuidv4(),
         sessionId,
@@ -118,7 +135,7 @@ export async function querySession(req, res) {
         citations,
       });
 
-      logger.info('Synchronous query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId });
+      logger.info('Synchronous query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId, citationCount: citations.length });
       return res.success('Query successful', {
         answer: fullAssistantReply,
         citations,

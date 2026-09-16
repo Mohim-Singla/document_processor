@@ -135,6 +135,16 @@ export async function uploadDocuments(req, res) {
               geminiService.getEmbeddingsForChunks(chunks, userId),
             ]);
 
+            const [curDoc, curSession] = await Promise.all([
+              mongoRepositories.documents.fetchOne({ documentId, userId, isDeleted: false }),
+              mongoRepositories.sessions.fetchOne({ sessionId, userId, isDeleted: false }),
+            ]);
+
+            if (!curDoc || !curSession) {
+              logger.info('Document or session deleted during async processing. Skipping persistence.', CONTEXT, INGEST_SUB_CONTEXT, { documentId, sessionId });
+              return;
+            }
+
             if (chunks.length > 0) {
               await mongoRepositories.documentChunks.bulkInsert(chunks);
             }
@@ -166,13 +176,24 @@ export async function uploadDocuments(req, res) {
 export async function getPreviewUrl(req, res) {
   const SUB_CONTEXT = getPreviewUrl.name;
   try {
-    const { docId } = req.params;
+    const { id: sessionId, docId } = req.params;
     const userId = req.user.userId;
 
-    logger.info('Generating presigned preview URL', CONTEXT, SUB_CONTEXT, { docId, userId });
+    logger.info('Generating presigned preview URL', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
 
-    // IDOR Check: Ensure document belongs to this user
-    const document = await mongoRepositories.documents.fetchOne({ documentId: docId, userId });
+    // IDOR Check: Ensure parent session exists and belongs to this user
+    if (sessionId) {
+      const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
+      if (!session) {
+        logger.warn('Parent session not found or unauthorized for preview', CONTEXT, SUB_CONTEXT, { sessionId, userId });
+        return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      }
+    }
+
+    // IDOR Check: Ensure document belongs to this user and session
+    const docQuery = { documentId: docId, userId };
+    if (sessionId) docQuery.sessionId = sessionId;
+    const document = await mongoRepositories.documents.fetchOne(docQuery);
 
     if (!document) {
       logger.warn('Document not found or unauthorized for preview', CONTEXT, SUB_CONTEXT, { docId, userId });
@@ -195,6 +216,13 @@ export async function deleteDocument(req, res) {
     const userId = req.user.userId;
 
     logger.info('Deleting document (soft delete)', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
+
+    // IDOR Check: Ensure parent session exists and belongs to this user
+    const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
+    if (!session) {
+      logger.warn('Parent session not found or unauthorized for document delete', CONTEXT, SUB_CONTEXT, { sessionId, userId });
+      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+    }
 
     // IDOR Check: Ensure document belongs to this user and session and is not already deleted
     const document = await mongoRepositories.documents.fetchOne({ documentId: docId, sessionId, userId });
@@ -224,6 +252,13 @@ export async function retryDocument(req, res) {
     const userId = req.user.userId;
 
     logger.info('Retrying document ingestion', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
+
+    // IDOR Check: Ensure parent session exists and belongs to this user
+    const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
+    if (!session) {
+      logger.warn('Parent session not found or unauthorized for document retry', CONTEXT, SUB_CONTEXT, { sessionId, userId });
+      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+    }
 
     // IDOR Check: Ensure document belongs to this user and session
     const document = await mongoRepositories.documents.fetchOne({ documentId: docId, sessionId, userId });
@@ -287,6 +322,16 @@ export async function retryDocument(req, res) {
               return chunks;
             })(),
           ]);
+
+          const [curDoc, curSession] = await Promise.all([
+            mongoRepositories.documents.fetchOne({ documentId: docId, userId, isDeleted: false }),
+            mongoRepositories.sessions.fetchOne({ sessionId, userId, isDeleted: false }),
+          ]);
+
+          if (!curDoc || !curSession) {
+            logger.info('Document or session deleted during async retry. Skipping persistence.', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId, sessionId });
+            return;
+          }
 
           if (chunks.length > 0) {
             await mongoRepositories.documentChunks.bulkInsert(chunks);

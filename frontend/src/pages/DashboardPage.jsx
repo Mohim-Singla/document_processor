@@ -3,6 +3,7 @@ import { Plus, Search, Archive, CheckCircle, FolderOpen, RefreshCw, AlertCircle,
 import SessionCard from '../components/dashboard/SessionCard';
 import CreateSessionModal from '../components/dashboard/CreateSessionModal';
 import ConfirmModal from '../components/common/ConfirmModal';
+import ErrorView from '../components/common/ErrorView';
 import { showBackendError } from '../components/SnackbarContainer';
 import { getSessions, createSession, updateSession, deleteSession, getUser } from '../services/api';
 
@@ -284,6 +285,14 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
             <RefreshCw className="w-6 h-6 animate-spin text-indigo-400 mb-2" />
             <span className="text-xs">Loading sessions from backend...</span>
           </div>
+        ) : error && sessions.length === 0 ? (
+          <ErrorView
+            compact={true}
+            title="Unable to Load Sessions"
+            subtitle={error}
+            error={error}
+            onRetry={loadInitialSessions}
+          />
         ) : filteredSessions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center border border-dashed border-slate-800 rounded-2xl bg-slate-950/40">
             <div className="p-4 rounded-2xl bg-slate-900 text-slate-500 mb-3">

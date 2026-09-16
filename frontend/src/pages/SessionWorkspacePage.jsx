@@ -6,6 +6,7 @@ import ChatInterface from '../components/workspace/ChatInterface';
 import CitationDrawer from '../components/workspace/CitationDrawer';
 import ConfirmModal from '../components/common/ConfirmModal';
 import DocumentPreviewModal from '../components/workspace/DocumentPreviewModal';
+import ErrorView from '../components/common/ErrorView';
 import { showBackendError } from '../components/SnackbarContainer';
 import {
   getSessionDocuments,
@@ -201,6 +202,29 @@ export default function SessionWorkspacePage({ session, onBack }) {
     setSelectedCitation(citation);
     setIsDrawerOpen(true);
   };
+
+  if (!session) {
+    return (
+      <ErrorView
+        title="Session Not Found"
+        subtitle="The requested document session could not be found or has been removed."
+        errorCode="404"
+        onGoHome={onBack}
+      />
+    );
+  }
+
+  if (error && documents.length === 0 && messages.length === 0) {
+    return (
+      <ErrorView
+        title="Unable to Load Workspace"
+        subtitle={error}
+        error={error}
+        onRetry={loadSessionData}
+        onGoHome={onBack}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950">

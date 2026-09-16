@@ -3,6 +3,7 @@ import { Plus, Search, Archive, CheckCircle, FolderOpen, RefreshCw, AlertCircle,
 import SessionCard from '../components/dashboard/SessionCard';
 import CreateSessionModal from '../components/dashboard/CreateSessionModal';
 import ConfirmModal from '../components/common/ConfirmModal';
+import { showBackendError } from '../components/SnackbarContainer';
 import { getSessions, createSession, updateSession, deleteSession, getUser } from '../services/api';
 
 export default function DashboardPage({ onSelectSession, onLogout }) {
@@ -146,7 +147,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
         onSelectSession(newSession);
       }
     } catch (err) {
-      alert(`Error creating session: ${err.message}`);
+      showBackendError(`Error creating session: ${err.message}`);
       throw err;
     }
   };
@@ -156,7 +157,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       await updateSession(sessionId, { status: 'ARCHIVED' });
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
     } catch (err) {
-      alert(`Failed to archive session: ${err.message}`);
+      showBackendError(`Failed to archive session: ${err.message}`);
     }
   };
 
@@ -165,7 +166,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       await updateSession(sessionId, { status: 'ACTIVE' });
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
     } catch (err) {
-      alert(`Failed to restore session: ${err.message}`);
+      showBackendError(`Failed to restore session: ${err.message}`);
     }
   };
 
@@ -175,7 +176,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       await deleteSession(deleteTargetSessionId);
       setSessions((prev) => prev.filter((s) => s.sessionId !== deleteTargetSessionId));
     } catch (err) {
-      alert(`Failed to delete session: ${err.message}`);
+      showBackendError(`Failed to delete session: ${err.message}`);
     } finally {
       setDeleteTargetSessionId(null);
     }

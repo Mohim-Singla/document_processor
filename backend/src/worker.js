@@ -3,7 +3,7 @@ import { serviceConfig } from './config/index.js';
 
 serviceConfig;
 import { mongoConnection } from './db/mongo/connection/index.js';
-import { mysqlConnection } from './db/mysql/connection/index.js';
+// import { mysqlConnection } from './db/mysql/connection/index.js';
 import { sqsClient } from './sqs/client/index.js';
 import { sqsClientConfig } from './config/sqs/sqsClientConfig.js';
 import { processDocumentMessage } from './sqs/consumer/documentConsumer.js';
@@ -19,9 +19,9 @@ async function startWorker() {
     // 1. Connect to persistence layers
     await Promise.all([
       mongoConnection.init(),
-      mysqlConnection.init(),
+      // mysqlConnection.init(),
     ]);
-    logger.info('Worker connected to MongoDB and MySQL databases', CONTEXT, SUB_CONTEXT);
+    logger.info('Worker connected to MongoDB database', CONTEXT, SUB_CONTEXT);
 
     // 2. Initialize and verify all SQS queues exist on AWS (auto-create if missing)
     await sqsClient.initAllQueues();

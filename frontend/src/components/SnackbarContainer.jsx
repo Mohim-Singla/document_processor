@@ -72,7 +72,7 @@ export default function SnackbarContainer() {
 
           <div className="flex-1 min-w-0 pr-1">
             <p className="text-xs font-semibold text-rose-400 tracking-wide uppercase">
-              Backend Error
+              Error
             </p>
             <p className="text-xs text-slate-200 mt-0.5 leading-relaxed break-words font-medium">
               {toast.message}

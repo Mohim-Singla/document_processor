@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { mysqlRepositories } from '../db/mysql/repository/index.js';
+import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { AUTH_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -30,8 +30,8 @@ export async function signup({ name, email, password }) {
   const SUB_CONTEXT = signup.name;
   logger.info('Attempting user registration', CONTEXT, SUB_CONTEXT, { email });
 
-  const existingUser = await mysqlRepositories.users.fetchOne({
-    where: { email: email.toLowerCase().trim() },
+  const existingUser = await mongoRepositories.users.fetchOne({
+    email: email.toLowerCase().trim(),
   });
 
   if (existingUser) {
@@ -43,7 +43,7 @@ export async function signup({ name, email, password }) {
   const hashedPassword = await bcrypt.hash(password, salt);
   const userId = uuidv4();
 
-  const user = await mysqlRepositories.users.create({
+  const user = await mongoRepositories.users.create({
     userId,
     name: name.trim(),
     email: email.toLowerCase().trim(),
@@ -51,7 +51,7 @@ export async function signup({ name, email, password }) {
     isEnabled: true,
   });
 
-  logger.info('User created in MySQL', CONTEXT, SUB_CONTEXT, { userId, email });
+  logger.info('User created in MongoDB', CONTEXT, SUB_CONTEXT, { userId, email });
 
   const token = generateToken({
     userId: user.userId,
@@ -76,8 +76,8 @@ export async function login({ email, password }) {
   const SUB_CONTEXT = login.name;
   logger.info('Attempting user login authentication', CONTEXT, SUB_CONTEXT, { email });
 
-  const user = await mysqlRepositories.users.fetchOne({
-    where: { email: email.toLowerCase().trim() },
+  const user = await mongoRepositories.users.fetchOne({
+    email: email.toLowerCase().trim(),
   });
 
   if (!user) {

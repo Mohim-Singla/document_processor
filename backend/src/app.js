@@ -8,7 +8,7 @@ import { routeMap } from './route/index.js';
 import { responseHandler } from './middleware/responseHandler.js';
 import { debugLogger } from './middleware/debug.js';
 import { mongoConnection } from './db/mongo/connection/index.js';
-import { mysqlConnection } from './db/mysql/connection/index.js';
+// import { mysqlConnection } from './db/mysql/connection/index.js';
 import http from 'http';
 
 const app = express();
@@ -31,9 +31,9 @@ async function main() {
     try {
       await Promise.all([
         mongoConnection.init(),
-        mysqlConnection.init(),
+        // mysqlConnection.init(),
       ]);
-      console.info('Databases (MySQL & MongoDB) successfully connected.');
+      console.info('Database (MongoDB) successfully connected.');
     } catch (dbError) {
       console.warn('Database connection warning (check .env):', dbError.message);
     }

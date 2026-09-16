@@ -5,6 +5,7 @@ import DocumentListItem from '../components/workspace/DocumentListItem';
 import ChatInterface from '../components/workspace/ChatInterface';
 import CitationDrawer from '../components/workspace/CitationDrawer';
 import ConfirmModal from '../components/common/ConfirmModal';
+import { showBackendError } from '../components/SnackbarContainer';
 import {
   getSessionDocuments,
   uploadDocuments,
@@ -94,7 +95,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
       await deleteDocument(session.sessionId, deleteTargetDocId);
       setDocuments((prev) => prev.filter((d) => d.documentId !== deleteTargetDocId));
     } catch (err) {
-      alert(`Failed to delete document: ${err.message}`);
+      showBackendError(`Failed to delete document: ${err.message}`);
     } finally {
       setDeleteTargetDocId(null);
     }
@@ -107,10 +108,10 @@ export default function SessionWorkspacePage({ session, onBack }) {
       if (url) {
         window.open(url, '_blank');
       } else {
-        alert('No preview URL available for this document.');
+        showBackendError('No preview URL available for this document.');
       }
     } catch (err) {
-      alert(`Failed to get preview URL: ${err.message}`);
+      showBackendError(`Failed to get preview URL: ${err.message}`);
     }
   };
 

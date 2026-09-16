@@ -173,6 +173,18 @@ export async function uploadDocuments(req, res) {
   }
 }
 
+const TEXT_EXTENSIONS = new Set([
+  'txt', 'csv', 'tsv', 'json', 'md', 'markdown', 'log', 'xml', 'yaml', 'yml', 'sql', 'html', 'htm', 'css', 'js', 'jsx', 'ts', 'tsx', 'env', 'sh', 'py'
+]);
+
+function isTextFile(fileName, mimeType) {
+  if (mimeType && (mimeType.startsWith('text/') || mimeType === 'application/json' || mimeType === 'application/xml' || mimeType === 'application/x-yaml' || mimeType === 'application/javascript')) {
+    return true;
+  }
+  const ext = fileName?.split('.').pop()?.toLowerCase();
+  return ext ? TEXT_EXTENSIONS.has(ext) : false;
+}
+
 export async function getPreviewUrl(req, res) {
   const SUB_CONTEXT = getPreviewUrl.name;
   try {
@@ -200,9 +212,48 @@ export async function getPreviewUrl(req, res) {
       return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
     }
 
-    const url = await s3Service.getPresignedDownloadUrl({ key: document.s3Key });
-    logger.info('Preview URL generated successfully', CONTEXT, SUB_CONTEXT, { docId });
-    return res.success('Presigned preview URL generated', { url });
+    const [url, downloadUrl] = await Promise.all([
+      s3Service.getPresignedDownloadUrl({ key: document.s3Key }),
+      s3Service.getPresignedDownloadUrl({
+        key: document.s3Key,
+        fileName: document.fileName,
+        asAttachment: true,
+      }),
+    ]);
+
+    const isText = isTextFile(document.fileName, document.mimeType);
+    let previewText = null;
+    let isTruncated = false;
+    const MAX_PREVIEW_BYTES = 250 * 1024; // 250 KB
+
+    if (isText) {
+      const isLarge = document.fileSize && document.fileSize > MAX_PREVIEW_BYTES;
+      const range = isLarge ? `bytes=0-${MAX_PREVIEW_BYTES - 1}` : undefined;
+      try {
+        const textBuffer = await s3Service.getObjectBuffer({
+          key: document.s3Key,
+          range,
+        });
+        previewText = textBuffer.toString('utf8');
+        isTruncated = isLarge || (document.fileSize ? document.fileSize > textBuffer.length : textBuffer.length >= MAX_PREVIEW_BYTES);
+      } catch (err) {
+        logger.warn('Failed to load text snippet for preview', CONTEXT, SUB_CONTEXT, { error: err.message, docId });
+      }
+    }
+
+    logger.info('Preview and download URLs generated successfully', CONTEXT, SUB_CONTEXT, { docId, isText, isTruncated });
+    return res.success('Presigned preview URL generated', {
+      url,
+      downloadUrl,
+      summary: document.summary || null,
+      pageCount: document.pageCount || 0,
+      fileName: document.fileName,
+      mimeType: document.mimeType,
+      fileSize: document.fileSize,
+      previewText,
+      isTruncated,
+      maxPreviewBytes: MAX_PREVIEW_BYTES,
+    });
   } catch (error) {
     logger.error('Error getting preview URL', CONTEXT, SUB_CONTEXT, { error: error.message });
     return res.error('Failed to generate preview URL', error.message, 500);

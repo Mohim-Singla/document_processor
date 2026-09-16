@@ -1,6 +1,7 @@
 import React from 'react';
 import { FileText, CheckCircle2, Clock, AlertTriangle, ExternalLink, Trash2, Loader2, RotateCw } from 'lucide-react';
 import { formatBytes } from '../../utils/formatters';
+import Tooltip from '../common/Tooltip';
 
 export default function DocumentListItem({ doc, onPreview, onDelete, onRetry }) {
   const getStatusBadge = (status) => {
@@ -61,35 +62,40 @@ export default function DocumentListItem({ doc, onPreview, onDelete, onRetry }) 
         {/* Hover action buttons (Preview, Delete) - Only take space on hover */}
         <div className="hidden group-hover:flex items-center gap-1">
           {doc.status === 'READY' && onPreview && (
-            <button
-              onClick={() => onPreview(doc)}
-              title="Preview original"
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
+            <Tooltip content="Preview document" position="top">
+              <button
+                type="button"
+                onClick={() => onPreview(doc)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
           )}
           {onDelete && (
-            <button
-              onClick={() => onDelete(doc.documentId)}
-              title="Delete document"
-              className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/40 transition"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <Tooltip content="Delete document" position="top">
+              <button
+                type="button"
+                onClick={() => onDelete(doc.documentId)}
+                className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/40 transition cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
           )}
         </div>
 
         {/* Dedicated Retry button to the left of Error badge */}
         {doc.status === 'FAILED' && onRetry && (
-          <button
-            type="button"
-            onClick={() => onRetry(doc.documentId)}
-            title="Retry document processing"
-            className="p-1 rounded-md text-amber-400 hover:text-amber-200 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-700/60 hover:border-amber-500 transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
-          >
-            <RotateCw className="w-3.5 h-3.5" />
-          </button>
+          <Tooltip content="Retry document processing" position="top">
+            <button
+              type="button"
+              onClick={() => onRetry(doc.documentId)}
+              className="p-1 rounded-md text-amber-400 hover:text-amber-200 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-700/60 hover:border-amber-500 transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         )}
 
         {/* Status Badge */}

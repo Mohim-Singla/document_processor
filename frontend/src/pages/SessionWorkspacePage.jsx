@@ -5,6 +5,7 @@ import DocumentListItem from '../components/workspace/DocumentListItem';
 import ChatInterface from '../components/workspace/ChatInterface';
 import CitationDrawer from '../components/workspace/CitationDrawer';
 import ConfirmModal from '../components/common/ConfirmModal';
+import DocumentPreviewModal from '../components/workspace/DocumentPreviewModal';
 import { showBackendError } from '../components/SnackbarContainer';
 import {
   getSessionDocuments,
@@ -26,6 +27,11 @@ export default function SessionWorkspacePage({ session, onBack }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Document preview modal state
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Confirmation modal state for document deletion
   const [deleteTargetDocId, setDeleteTargetDocId] = useState(null);
@@ -102,17 +108,30 @@ export default function SessionWorkspacePage({ session, onBack }) {
   };
 
   const handlePreviewDoc = async (doc) => {
+    setPreviewDoc(doc);
+    setPreviewData(null);
+    setPreviewLoading(true);
     try {
       const res = await getDocumentPreviewUrl(session.sessionId, doc.documentId);
-      const url = res.response?.url || res.data?.url || res.url;
-      if (url) {
-        window.open(url, '_blank');
+      const data = res.response || res.data || res;
+      if (data?.url) {
+        setPreviewData(data);
       } else {
         showBackendError('No preview URL available for this document.');
+        setPreviewDoc(null);
       }
     } catch (err) {
       showBackendError(`Failed to get preview URL: ${err.message}`);
+      setPreviewDoc(null);
+    } finally {
+      setPreviewLoading(false);
     }
+  };
+
+  const handleClosePreview = () => {
+    setPreviewDoc(null);
+    setPreviewData(null);
+    setPreviewLoading(false);
   };
 
   const handleRetryDoc = async (docId) => {
@@ -280,9 +299,22 @@ export default function SessionWorkspacePage({ session, onBack }) {
         onClose={() => setIsDrawerOpen(false)}
         citation={selectedCitation}
         onPreviewOriginal={(docId) => {
+          setIsDrawerOpen(false);
           const doc = documents.find((d) => d.documentId === docId);
-          if (doc) handlePreviewDoc(doc);
+          if (doc) {
+            handlePreviewDoc(doc);
+          }
         }}
+      />
+
+      {/* In-Session Universal Document Preview Modal */}
+      <DocumentPreviewModal
+        isOpen={Boolean(previewDoc)}
+        onClose={handleClosePreview}
+        doc={previewDoc}
+        sessionId={session.sessionId}
+        previewData={previewData}
+        loading={previewLoading}
       />
 
       {/* UI Integrated Confirmation Modal for Document Deletion */}

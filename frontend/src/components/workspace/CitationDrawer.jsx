@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, FileText, ExternalLink, Quote } from 'lucide-react';
+import { X, FileText, Eye, Quote } from 'lucide-react';
 
 export default function CitationDrawer({ isOpen, onClose, citation, onPreviewOriginal }) {
   if (!isOpen || !citation) return null;
@@ -52,8 +52,8 @@ export default function CitationDrawer({ isOpen, onClose, citation, onPreviewOri
             onClick={() => onPreviewOriginal(citation.documentId)}
             className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition shadow-lg shadow-indigo-600/20"
           >
-            <ExternalLink className="w-4 h-4" />
-            Open Original File (S3)
+            <Eye className="w-4 h-4" />
+            Preview Original Document
           </button>
         </div>
       </div>

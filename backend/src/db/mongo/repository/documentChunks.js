@@ -13,8 +13,16 @@ async function findBySession(sessionId, filter = {}) {
   return modelMap.documentChunksModel.getModel().find({ sessionId, isDeleted: { $ne: true }, ...filter }).lean();
 }
 
-async function findByDocument(documentId, filter = {}) {
-  return modelMap.documentChunksModel.getModel().find({ documentId, isDeleted: { $ne: true }, ...filter }).lean();
+async function findByDocument(documentId, filter = {}, projection = null, options = {}) {
+  let query = modelMap.documentChunksModel.getModel().find({ documentId, isDeleted: { $ne: true }, ...filter }, projection);
+  if (options.sort) query = query.sort(options.sort);
+  if (options.limit) query = query.limit(options.limit);
+  if (options.skip) query = query.skip(options.skip);
+  return query.lean();
+}
+
+async function countByDocument(documentId, filter = {}) {
+  return modelMap.documentChunksModel.getModel().countDocuments({ documentId, isDeleted: { $ne: true }, ...filter });
 }
 
 async function softDeleteBySession(sessionId, filter = {}) {
@@ -43,6 +51,7 @@ export const documentChunks = {
   bulkInsert,
   findBySession,
   findByDocument,
+  countByDocument,
   softDeleteBySession,
   softDeleteByDocument,
   deleteBySession,

@@ -58,9 +58,14 @@ export async function uploadToS3({ key, buffer, mimeType }) {
   };
 }
 
-export async function getPresignedDownloadUrl({ key, expiresInSeconds = AWS_CONFIG.PRESIGNED_URL_EXPIRY_SECONDS }) {
+export async function getPresignedDownloadUrl({
+  key,
+  expiresInSeconds = AWS_CONFIG.PRESIGNED_URL_EXPIRY_SECONDS,
+  fileName = null,
+  asAttachment = false,
+}) {
   const SUB_CONTEXT = getPresignedDownloadUrl.name;
-  logger.info('Generating presigned download URL', CONTEXT, SUB_CONTEXT, { bucketName, key, expiresInSeconds });
+  logger.info('Generating presigned download URL', CONTEXT, SUB_CONTEXT, { bucketName, key, expiresInSeconds, fileName, asAttachment });
 
   // Mock code only runs when ENV === 'test'
   if (process.env.ENV === 'test') {
@@ -74,10 +79,17 @@ export async function getPresignedDownloadUrl({ key, expiresInSeconds = AWS_CONF
   }
 
   const client = getClient();
-  const command = new GetObjectCommand({
+  const commandParams = {
     Bucket: bucketName,
     Key: key,
-  });
+  };
+
+  if (asAttachment) {
+    const safeFileName = (fileName || 'download').replace(/["\r\n]/g, '_');
+    commandParams.ResponseContentDisposition = `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeURIComponent(safeFileName)}`;
+  }
+
+  const command = new GetObjectCommand(commandParams);
 
   const url = await getSignedUrl(client, command, { expiresIn: expiresInSeconds });
   logger.info('Presigned download URL successfully created', CONTEXT, SUB_CONTEXT, { key });
@@ -120,9 +132,9 @@ export const s3Service = {
 /**
  * Downloads an object buffer from S3 given its S3 key
  */
-export async function getObjectBuffer({ key }) {
+export async function getObjectBuffer({ key, range }) {
   const SUB_CONTEXT = 'getObjectBuffer';
-  logger.info('Downloading object buffer from S3', CONTEXT, SUB_CONTEXT, { bucketName, key });
+  logger.info('Downloading object buffer from S3', CONTEXT, SUB_CONTEXT, { bucketName, key, range });
 
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
     logger.critical('AWS S3 credentials missing in environment', CONTEXT, SUB_CONTEXT);
@@ -130,10 +142,15 @@ export async function getObjectBuffer({ key }) {
   }
 
   const client = getClient();
-  const command = new GetObjectCommand({
+  const commandParams = {
     Bucket: bucketName,
     Key: key,
-  });
+  };
+  if (range) {
+    commandParams.Range = range;
+  }
+
+  const command = new GetObjectCommand(commandParams);
 
   const response = await client.send(command);
   const byteArray = await response.Body.transformToByteArray();

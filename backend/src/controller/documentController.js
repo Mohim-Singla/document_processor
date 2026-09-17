@@ -174,7 +174,7 @@ export async function uploadDocuments(req, res) {
 }
 
 const TEXT_EXTENSIONS = new Set([
-  'txt', 'csv', 'tsv', 'json', 'md', 'markdown', 'log', 'xml', 'yaml', 'yml', 'sql', 'html', 'htm', 'css', 'js', 'jsx', 'ts', 'tsx', 'env', 'sh', 'py'
+  'txt', 'csv', 'tsv', 'json', 'md', 'markdown', 'log', 'xml', 'yaml', 'yml', 'sql', 'html', 'htm', 'css', 'js', 'jsx', 'ts', 'tsx', 'env', 'sh', 'py',
 ]);
 
 function isTextFile(fileName, mimeType) {

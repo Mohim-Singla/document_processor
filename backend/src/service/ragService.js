@@ -28,31 +28,32 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
   const SUB_CONTEXT = retrieveRelevantChunks.name;
   logger.info('Retrieving relevant chunks for RAG search', CONTEXT, SUB_CONTEXT, { sessionId, userId, topK });
 
-  const docFilter = { sessionId, isDeleted: false };
-  if (userId) {
-    docFilter.userId = userId;
+  if (!userId) {
+    logger.error('retrieveRelevantChunks rejected: userId is strictly required for multi-tenant data isolation', CONTEXT, SUB_CONTEXT, { sessionId });
+    throw new Error('Unauthorized: userId is required for chunk retrieval');
   }
 
-  // 1. Fetch active documents in session to construct document name mapping and filter orphan chunks
-  const activeDocs = await mongoRepositories.documents.fetchAll(docFilter);
+  const docFilter = { sessionId, userId, isDeleted: false };
+  const chunkFilter = { userId };
+
+  // Concurrently fetch active documents, session chunks, and query embedding
+  const [activeDocs, allChunks, queryEmbedding] = await Promise.all([
+    mongoRepositories.documents.fetchAll(docFilter),
+    mongoRepositories.documentChunks.findBySession(sessionId, chunkFilter),
+    geminiService.getEmbedding(query),
+  ]);
+
   if (!activeDocs || activeDocs.length === 0) {
     logger.warn('No active documents found for session', CONTEXT, SUB_CONTEXT, { sessionId });
     return [];
   }
 
-  const activeDocMap = new Map(activeDocs.map((d) => [d.documentId, d.fileName]));
-
-  // 2. Fetch chunks owned by this user for this session
-  const chunkFilter = {};
-  if (userId) {
-    chunkFilter.userId = userId;
-  }
-
-  const allChunks = await mongoRepositories.documentChunks.findBySession(sessionId, chunkFilter);
   if (!allChunks || allChunks.length === 0) {
     logger.warn('No document chunks available for session', CONTEXT, SUB_CONTEXT, { sessionId });
     return [];
   }
+
+  const activeDocMap = new Map(activeDocs.map((d) => [d.documentId, d.fileName]));
 
   // Keep only chunks belonging to active documents in this session
   const activeChunks = allChunks.filter((chunk) => activeDocMap.has(chunk.documentId));
@@ -60,9 +61,6 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
     logger.warn('No active document chunks found for session', CONTEXT, SUB_CONTEXT, { sessionId });
     return [];
   }
-
-  // 3. Generate query embedding
-  const queryEmbedding = await geminiService.getEmbedding(query);
 
   // 4. Compute similarity score for each active chunk
   const scoredChunks = activeChunks.map((chunk) => {

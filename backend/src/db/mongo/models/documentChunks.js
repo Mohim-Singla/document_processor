@@ -18,6 +18,10 @@ const schema = new mongoose.Schema({
   deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
+// Compound indexes for high-speed RAG chunk lookups
+schema.index({ sessionId: 1, userId: 1, isDeleted: 1 });
+schema.index({ documentId: 1, isDeleted: 1 });
+
 let model;
 
 export const documentChunksModel = {

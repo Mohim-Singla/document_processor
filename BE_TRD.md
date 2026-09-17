@@ -733,10 +733,12 @@ data: [DONE]
 
 ## 5. Asynchronous Message Queue Contract & Worker Processing (AWS SQS)
 
-### 5.1 Queue Topology
+### 5.1 Queue Topology & Polling Configuration
 - **Primary Queue**: `document_processing_queue_local`
 - **Visibility Timeout**: 180 seconds
 - **Message Retention**: 4 days
+- **Long Polling Wait Time**: 20 seconds (`waitTimeSeconds: 20` and queue attribute `ReceiveMessageWaitTimeSeconds: 20`) to eliminate empty receive calls and conserve polling capacity.
+- **Polling Delay**: 1 second (`pollingWaitTimeMs: 1000`) short throttle pause between poll cycles ensuring sub-second message ingestion latency without over-polling.
 - **Consumer Framework**: `sqs-consumer` long-polling with graceful shutdown hooks (`SIGINT`, `SIGTERM`).
 
 ### 5.2 SQS Message Payload Data Contract
@@ -853,6 +855,8 @@ If a user attempts to access or mutate an ID belonging to another user, the quer
 | `AWS_SECRET_ACCESS_KEY` | String | Yes | None | AWS IAM Secret Access Key. |
 | `AWS_S3_BUCKET_NAME` | String | Yes | None | Target AWS S3 bucket for raw document storage. |
 | `AWS_SQS_DOCUMENT_PROCESSING_QUEUE` | String | No | `document_processing_queue_local` | AWS SQS queue name for document ingestion jobs. |
+| `AWS_SQS_WAIT_TIME_SECONDS` | Integer | No | `20` | Duration (seconds) for SQS long-polling wait time (max 20s). |
+| `AWS_SQS_POLLING_WAIT_TIME_MS` | Integer | No | `1000` | Delay (milliseconds) to wait before repolling the queue (1s throttle). |
 | `MAX_FILE_SIZE_MB` | Integer | No | `10` | Maximum allowable file size in megabytes for uploaded documents (configurable). |
 | `MAX_BATCH_FILE_COUNT` | Integer | No | `10` | Maximum allowable number of files per batch upload action (configurable). |
 | `GEMINI_API_KEY` | String | Yes | None | Google Cloud Gemini API key for embeddings and generation. |

@@ -92,6 +92,7 @@ export const sqsClient = {
     const attributes = {
       VisibilityTimeout: options.visibilityTimeout || '300', // 5 minutes processing timeout
       MessageRetentionPeriod: options.messageRetentionPeriod || (isDlq ? '1209600' : '86400'), // 14 days for DLQ, 1 day for source
+      ReceiveMessageWaitTimeSeconds: options.receiveMessageWaitTimeSeconds || String(sqsClientConfig.WAIT_TIME_SECONDS),
       ...(options.attributes || {}),
     };
 
@@ -199,15 +200,20 @@ export const sqsClient = {
     const queueUrl = await sqsClient.getOrCreateQueueUrl(targetQueueName);
     const client = sqsClient.getInstance();
 
-    logger.info('Starting SQS Consumer for queue', CONTEXT, SUB_CONTEXT, { queueUrl, targetQueueName });
+    logger.info('Starting SQS Consumer for queue', CONTEXT, SUB_CONTEXT, {
+      queueUrl,
+      targetQueueName,
+      waitTimeSeconds: sqsConsumerOptions.waitTimeSeconds ?? sqsClientConfig.WAIT_TIME_SECONDS,
+      pollingWaitTimeMs: sqsConsumerOptions.pollingWaitTimeMs ?? sqsClientConfig.POLLING_WAIT_TIME_MS,
+    });
 
     const consumer = Consumer.create({
       queueUrl,
       sqs: client,
       shouldDeleteMessages: true,
       alwaysAcknowledge: false,
-      pollingWaitTimeMs: 0,
-      waitTimeSeconds: 0,
+      pollingWaitTimeMs: sqsClientConfig.POLLING_WAIT_TIME_MS,
+      waitTimeSeconds: sqsClientConfig.WAIT_TIME_SECONDS,
       ...sqsConsumerOptions,
       handleMessage: async (message) => {
         logger.info('Consumer received message from SQS', CONTEXT, SUB_CONTEXT, { messageId: message.MessageId });

@@ -8,8 +8,9 @@ import { routeMap } from './route/index.js';
 import { responseHandler } from './middleware/responseHandler.js';
 import { debugLogger } from './middleware/debug.js';
 import { mongoConnection } from './db/mongo/connection/index.js';
-// import { mysqlConnection } from './db/mysql/connection/index.js';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const app = express();
 const server = http.createServer(app);
@@ -43,6 +44,20 @@ async function main() {
     });
 
     app.use('', routeMap);
+
+    // Serve static frontend files and SPA client-side routing fallback
+    const publicPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../public');
+    app.use(express.static(publicPath));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/v1') || req.path.startsWith('/ping')) {
+        return next();
+      }
+      res.sendFile(path.join(publicPath, 'index.html'), (err) => {
+        if (err) {
+          next();
+        }
+      });
+    });
 
     // =========================================================================
     // IN-PROCESS SQS BACKGROUND WORKER CONSUMER

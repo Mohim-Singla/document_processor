@@ -3,39 +3,61 @@
 
 ---
 
-## 1. Executive Summary & System Scope
+## 1. System Overview & Architecture
 
-The Backend of the **Document Intelligence & Query System** is an asynchronous, dual-persistence Node.js service (Express.js, ES Modules) responsible for:
-1. **Authentication & IDOR Protection**: User registration/login with email and password via bcrypt + JWT. Middleware-level Bearer token verification with decrypted `req.user` attached to all requests. Strict owner `userId` scoping across all database operations to prevent IDOR attacks.
-2. **Workspace & Session Orchestration**: CRUD operations, archiving, and state management for user sessions in **MongoDB** (`sessions`). Supports cursor-based pagination with indexed compound sorting `(userId, status, isDeleted, updatedAt, _id)` and session retrieval by ID (`GET /v1/sessions/:id`) for page reload persistence.
-3. **Secure Cloud File Ingestion**: Receiving multi-format documents (PDF, DOCX, TXT, images) up to 1 MB per file (max 4 files) and storing raw originals in **AWS S3** (`ap-south-1`).
-4. **Asynchronous SQS Queue Processing**: Offloading document extraction tasks via AWS SQS queue (`document_processing_queue_local`) consumed by background workers to preserve server responsiveness.
-5. **Document Extraction & Processing Pipeline**: Parsing native text via `pdf2json` (with safe URI decoding) and `mammoth` (DOCX), structural extraction, and cooperative event loop yielding (`setImmediate`) to prevent event loop starvation.
-6. **Vector Embedding & Persistence**: Computing vector embeddings via **Google Gemini Embedding API** (`gemini-embedding-001`, 3072-dimensional) and storing high-dimensional vectors in **MongoDB** (`document_chunks`), stamped with `userId`.
-7. **RAG & Conversational Q&A**: Performing cosine semantic retrieval scoped by `userId`, context window assembly, and token-by-token streaming responses with source citations via **Google Gemini** with multi-model fallback cascade.
-8. **Soft Deletion Persistence**: All entities (sessions, documents, chunks, chat messages) utilize non-destructive soft deletion (`isDeleted: true`, `deletedAt`).
-9. **User Account Persistence**: Maintaining core user accounts and credentials in **MySQL** (`users` table, Sequelize).
+The Backend of the **Document Intelligence & Query System** is an asynchronous Node.js application built with Express.js adhering to ES Modules (`type: module`). It utilizes MongoDB as a unified document and vector store, providing a secure, high-concurrency API service responsible for user identity management, multi-format document ingestion, cloud file storage, asynchronous background job queuing, semantic text parsing, vector embedding generation, and real-time streaming conversational question-answering with verifiable citations.
+
+### 1.1 Architectural Principles
+- **Unified Document & Vector Store**: MongoDB serves as the single persistence engine for all application entities, storing user accounts, workspace sessions, document metadata, chunk text, 3072-dimensional vector embeddings, and conversational message histories.
+- **Tenant Isolation & IDOR Immunity**: Every data entity is strictly scoped to its owner (`userId`). Database queries rigorously enforce owner keys to prevent Insecure Direct Object Reference (IDOR) access.
+- **Non-Blocking Asynchronous Ingestion**: Heavy document parsing and vectorization workloads are decoupled from the API request-response cycle using AWS SQS and background worker consumers.
+- **Streaming First**: Conversational queries stream synthesized tokens via Server-Sent Events (SSE) directly to the client with sub-second initial token latency.
+- **Non-Destructive Data Lifecycle**: All user-facing deletions utilize soft-delete patterns (`isDeleted`, `deletedAt`) to maintain audit trails and recovery capabilities.
+
+### 1.2 System Topology Diagram
+
+```mermaid
+graph TD
+    Client["Frontend Client Application"] -->|HTTP / SSE Requests| API["Express API Server (src/app.js)"]
+
+    subgraph Security & Middleware Pipeline
+        API --> CORS["CORS Middleware"]
+        API --> BodyParser["JSON & Multipart Parsers"]
+        API --> AuthMiddleware["JWT Authentication Middleware"]
+        AuthMiddleware --> IDORFilter["Tenant Scoping Filter"]
+    end
+
+    subgraph Business Logic & Orchestration
+        IDORFilter --> AuthController["Auth Controller"]
+        IDORFilter --> SessionController["Session Controller"]
+        IDORFilter --> DocumentController["Document Controller"]
+        IDORFilter --> QueryController["Query & RAG Controller"]
+    end
+
+    subgraph Asynchronous Worker Pipeline
+        DocumentController -->|Enqueue Job| SQS["AWS SQS Queue"]
+        SQS -->|Consume Job| Worker["Background Worker (src/worker.js)"]
+        Worker -->|Fetch Raw File| S3
+        Worker -->|Text Extraction| Parsers["PDF & DOCX Parsers"]
+        Worker -->|Vector Embeddings| GeminiEmbed["Gemini Embedding Service"]
+        Worker -->|Bulk Insert Chunks| MongoDB
+    end
+
+    subgraph Persistence & Cloud Services
+        AuthController -->|Mongoose ODM| MongoDB[(MongoDB: users)]
+        SessionController -->|Mongoose ODM| MongoDB[(MongoDB: sessions)]
+        DocumentController -->|S3 Upload & Presigned URLs| S3[(AWS S3: Raw Files)]
+        DocumentController -->|Mongoose ODM| MongoDB[(MongoDB: documents)]
+        QueryController -->|Vector Retrieval & History| MongoDB[(MongoDB: chunks, chat_messages)]
+        QueryController -->|Streaming LLM Synthesis| GeminiLLM[Google Gemini API]
+    end
+```
 
 ---
 
-## 2. Technical Stack & Core Dependencies
+## 2. Persistence Layer & Data Specifications
 
-| Concern / Layer | Technology / Library | Role & Justification |
-| :--- | :--- | :--- |
-| **Runtime & Framework** | Node.js (ESM) + Express.js (`v4.21.1`) | High-concurrency event-driven API server |
-| **Authentication** | `jsonwebtoken`, `bcryptjs` | JWT Bearer token issuance & validation, password hashing with salt 10 |
-| **Document, Session & Vector Store** | MongoDB + Mongoose (`v8.8.1`) | Sessions, documents, chunks, embeddings, and chat history with soft delete and compound cursor index support |
-| **User Persistence** | MySQL 8.x + Sequelize ORM (`v6.37.5`) | Transactional persistence strictly for `users` |
-| **Cloud File Storage** | AWS S3 (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`) | Scalable, encrypted raw document object store (`ap-south-1`) |
-| **Job Queue & Asynchronous Processing** | AWS SQS (`@aws-sdk/client-sqs`, `sqs-consumer`) | Asynchronous job dispatching and dedicated consumer worker |
-| **File Upload Handling** | `multer` (memory storage) | Multipart form-data handling with MIME-type and 1MB size limit constants |
-| **AI & LLM Services** | Google Gemini API (`@google/genai` v2) | Embedding generation (`gemini-embedding-001`) & streaming generation with fallback cascade |
-| **Document Parsers** | `pdf2json`, `mammoth` | Page-level PDF text extraction and DOCX parsing with safe URI decoding and event-loop yielding |
-| **Validation & Security** | `joi`, `cors` | Joi request schema validation and CORS configuration |
-
----
-
-## 3. Database Architecture & Schemas
+### 2.1 Entity Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -45,244 +67,794 @@ erDiagram
     SESSIONS ||--o{ CHAT_MESSAGES : records
 
     USERS {
-        string userId PK "MySQL"
-        string email "Unique"
-        string name
-        string password "Hashed bcrypt"
-        boolean isEnabled
+        string userId PK "UUID v4, Indexed"
+        string email UK "Unique, Lowercase, Indexed"
+        string name "Full Name, Trimmed"
+        string password "Bcrypt Hashed"
+        boolean isEnabled "Default true"
+        boolean isDeleted "Indexed"
+        datetime deletedAt "Nullable Timestamp"
+        datetime createdAt "Timestamp"
+        datetime updatedAt "Timestamp"
     }
 
     SESSIONS {
-        string sessionId PK "MongoDB"
-        string userId FK "Index, IDOR scoped"
-        string title
-        string description
+        string sessionId PK "UUID v4"
+        string userId FK "Indexed, Owner Scope"
+        string title "Session Name"
+        string description "Optional Notes"
         enum status "ACTIVE, ARCHIVED"
-        int documentCount
-        datetime createdAt
-        datetime updatedAt
+        int documentCount "Counter Cache"
+        boolean isDeleted "Indexed"
+        datetime deletedAt "Nullable Timestamp"
+        datetime createdAt "Timestamp"
+        datetime updatedAt "Timestamp"
     }
 
     DOCUMENTS {
-        string documentId PK "MongoDB"
-        string sessionId FK "Index"
-        string userId FK "Index, IDOR scoped"
-        string fileName
-        string mimeType
-        bigint fileSize
-        string s3Key
-        string s3Bucket
+        string documentId PK "UUID v4"
+        string sessionId FK "Indexed"
+        string userId FK "Indexed, Owner Scope"
+        string fileName "Original Filename"
+        string mimeType "MIME Type"
+        bigint fileSize "File Size in Bytes"
+        string s3Key "S3 Storage Path"
+        string s3Bucket "Target S3 Bucket"
         enum status "QUEUED, PROCESSING, READY, FAILED"
-        int pageCount
-        string errorMessage
-        datetime createdAt
-        datetime updatedAt
+        int pageCount "Detected Pages"
+        string summary "AI Generated Summary"
+        string errorMessage "Nullable Error Text"
+        boolean isDeleted "Indexed"
+        datetime deletedAt "Nullable Timestamp"
+        datetime createdAt "Timestamp"
+        datetime updatedAt "Timestamp"
     }
 
     DOCUMENT_CHUNKS {
-        string chunkId PK "MongoDB"
-        string documentId FK
-        string sessionId FK
-        string userId FK "IDOR scoped"
-        int pageNumber
-        int chunkIndex
-        string content
+        string chunkId PK "UUID v4"
+        string documentId FK "Indexed"
+        string sessionId FK "Indexed"
+        string userId FK "Indexed, Owner Scope"
+        int pageNumber "1-Indexed Page Number"
+        int chunkIndex "0-Indexed Chunk Sequence"
+        string content "Extracted Text Chunk"
         array embedding "Vector Float[3072]"
-        object metadata
+        object metadata "Character Length & Filename"
+        boolean isDeleted "Indexed"
+        datetime deletedAt "Nullable Timestamp"
+        datetime createdAt "Timestamp"
+        datetime updatedAt "Timestamp"
     }
 
     CHAT_MESSAGES {
-        string messageId PK "MongoDB"
-        string sessionId FK
-        string userId FK "IDOR scoped"
+        string messageId PK "UUID v4"
+        string sessionId FK "Indexed"
+        string userId FK "Indexed, Owner Scope"
         enum sender "USER, ASSISTANT"
-        string content
-        array citations
-        datetime timestamp
+        string content "Message Body"
+        array citations "Source Passages Array"
+        datetime timestamp "Creation Timestamp"
+        boolean isDeleted "Indexed"
+        datetime deletedAt "Nullable Timestamp"
     }
 ```
 
-### 3.1. MySQL Schema (Sequelize)
+### 2.2 MongoDB Collection Specifications
 
-#### `users`
-- `userId`: `STRING(36)` (Primary Key)
-- `name`: `STRING` (Not Null)
-- `email`: `STRING` (Unique, Not Null)
-- `password`: `STRING` (Hashed)
-- `isEnabled`: `BOOLEAN` (Default: true)
+#### 1. Collection: `users`
+- **Primary Identifier**: `userId` (String, UUID v4, Unique, Indexed)
+- **Attributes**:
+  - `email` (String, Required, Unique, Indexed, Lowercase, Trimmed)
+  - `name` (String, Required, Trimmed)
+  - `password` (String, Required, Bcrypt hashed with salt rounds = 10)
+  - `isEnabled` (Boolean, Default: `true`)
+  - `isDeleted` (Boolean, Default: `false`, Indexed)
+  - `deletedAt` (Date, Nullable, Default: `null`)
+  - `createdAt` (Date, Automatic timestamp)
+  - `updatedAt` (Date, Automatic timestamp)
+- **Indexes**:
+  - `{ userId: 1 }` (Unique)
+  - `{ email: 1 }` (Unique)
+  - `{ isDeleted: 1 }`
+
+#### 2. Collection: `sessions`
+- **Primary Identifier**: `sessionId` (String, UUID v4, Unique)
+- **Tenant Scope**: `userId` (String, Indexed)
+- **Attributes**:
+  - `title` (String, Required)
+  - `description` (String, Nullable, Default: `null`)
+  - `status` (String, Enum: `['ACTIVE', 'ARCHIVED']`, Default: `'ACTIVE'`, Indexed)
+  - `documentCount` (Number, Default: 0)
+  - `isDeleted` (Boolean, Default: `false`, Indexed)
+  - `deletedAt` (Date, Nullable, Default: `null`)
+- **Compound Indexes**:
+  - `{ userId: 1, status: 1, isDeleted: 1, updatedAt: -1, _id: -1 }` (Enables stable cursor pagination and filtering).
+
+#### 3. Collection: `documents`
+- **Primary Identifier**: `documentId` (String, UUID v4, Unique)
+- **Foreign Keys**: `sessionId` (String, Indexed), `userId` (String, Indexed)
+- **Attributes**:
+  - `fileName` (String, Required)
+  - `mimeType` (String, Required)
+  - `fileSize` (Number, Required, Bytes)
+  - `s3Key` (String, Required)
+  - `s3Bucket` (String, Required)
+  - `status` (String, Enum: `['QUEUED', 'PROCESSING', 'READY', 'FAILED']`, Default: `'QUEUED'`, Indexed)
+  - `pageCount` (Number, Default: 0)
+  - `summary` (String, Nullable, Default: `null`)
+  - `errorMessage` (String, Nullable, Default: `null`)
+  - `isDeleted` (Boolean, Default: `false`, Indexed)
+  - `deletedAt` (Date, Nullable, Default: `null`)
+- **Indexes**:
+  - `{ sessionId: 1, userId: 1, isDeleted: 1 }`
+  - `{ documentId: 1, userId: 1 }`
+
+#### 4. Collection: `document_chunks`
+- **Primary Identifier**: `chunkId` (String, UUID v4, Unique)
+- **Foreign Keys**: `documentId` (String, Indexed), `sessionId` (String, Indexed), `userId` (String, Indexed)
+- **Attributes**:
+  - `pageNumber` (Number, Default: 1)
+  - `chunkIndex` (Number, Required)
+  - `content` (String, Required)
+  - `metadata`: `{ charLength: Number, fileName: String }`
+  - `embedding` (Array of Numbers, 3072 dimensions)
+  - `isDeleted` (Boolean, Default: `false`, Indexed)
+  - `deletedAt` (Date, Nullable, Default: `null`)
+- **Indexes**:
+  - `{ sessionId: 1, userId: 1, isDeleted: 1 }`
+  - `{ documentId: 1, userId: 1 }`
+
+#### 5. Collection: `chat_messages`
+- **Primary Identifier**: `messageId` (String, UUID v4, Unique)
+- **Foreign Keys**: `sessionId` (String, Indexed), `userId` (String, Indexed)
+- **Attributes**:
+  - `sender` (String, Enum: `['USER', 'ASSISTANT']`, Required)
+  - `content` (String, Required)
+  - `citations`: Array of Objects:
+    - `documentId` (String)
+    - `fileName` (String)
+    - `pageNumber` (Number)
+    - `snippet` (String, Max 300 characters)
+    - `score` (Number, Cosine similarity score)
+  - `timestamp` (Date, Default: Current Date)
+  - `isDeleted` (Boolean, Default: `false`, Indexed)
+  - `deletedAt` (Date, Nullable, Default: `null`)
+- **Indexes**:
+  - `{ sessionId: 1, userId: 1, isDeleted: 1, timestamp: 1 }`
 
 ---
 
-### 3.2. MongoDB Schemas (Mongoose)
+## 3. Global API Design & Protocol Conventions
 
-#### `sessions` Collection
-```javascript
-{
-  sessionId: { type: String, required: true, unique: true },
-  userId: { type: String, required: true, index: true }, // Owner userId for IDOR prevention
-  title: { type: String, required: true },
-  description: { type: String, default: null },
-  status: { type: String, enum: ['ACTIVE', 'ARCHIVED'], default: 'ACTIVE', index: true },
-  documentCount: { type: Number, default: 0 },
-  isDeleted: { type: Boolean, default: false, index: true },
-  deletedAt: { type: Date, default: null }
-}
-// Compound index: { userId: 1, status: 1, isDeleted: 1, updatedAt: -1, _id: -1 }
+### 3.1 Base URI & Versioning
+All backend API routes are anchored under the `/v1` versioned namespace:
+```
+https://api.documentprocessor.local/v1
 ```
 
-#### `documents` Collection
-```javascript
+### 3.2 Authentication & Authorization Headers
+Protected endpoints require an RFC 6750 Bearer token header:
+```http
+Authorization: Bearer <signed_jwt_token>
+```
+
+### 3.3 Standard Response Envelopes
+
+#### Success Envelope (2xx)
+```json
 {
-  documentId: { type: String, required: true, unique: true },
-  sessionId: { type: String, required: true, index: true },
-  userId: { type: String, required: true, index: true }, // Owner userId for IDOR prevention
-  fileName: { type: String, required: true },
-  mimeType: { type: String, required: true },
-  fileSize: { type: Number, required: true },
-  s3Key: { type: String, required: true },
-  s3Bucket: { type: String, required: true },
-  status: { type: String, enum: ['QUEUED', 'PROCESSING', 'READY', 'FAILED'], default: 'QUEUED', index: true },
-  pageCount: { type: Number, default: 0 },
-  errorMessage: { type: String, default: null },
-  isDeleted: { type: Boolean, default: false, index: true },
-  deletedAt: { type: Date, default: null }
+  "status": "Success",
+  "message": "Human-readable confirmation message",
+  "statusCode": 200,
+  "response": {}
 }
 ```
 
-#### `document_chunks` Collection
-```javascript
+#### Error Envelope (4xx, 5xx)
+```json
 {
-  chunkId: { type: String, required: true, unique: true },
-  documentId: { type: String, required: true, index: true },
-  sessionId: { type: String, required: true, index: true },
-  userId: { type: String, required: true, index: true }, // Scoped to owner
-  pageNumber: { type: Number, default: 1 },
-  chunkIndex: { type: Number, required: true },
-  content: { type: String, required: true },
-  metadata: {
-    charLength: Number,
-    fileName: String
-  },
-  embedding: { type: [Number], default: [] }, // 3072 dims from gemini-embedding-001
-  isDeleted: { type: Boolean, default: false, index: true },
-  deletedAt: { type: Date, default: null }
+  "status": "Success",
+  "message": "Human-readable error explanation",
+  "errorCode": "ERROR_CODE_STRING",
+  "error": "Detailed validation or system error string"
 }
 ```
 
-#### `chat_messages` Collection
-```javascript
+---
+
+## 4. Extensive API Contracts
+
+### 4.1 Authentication Service (`/v1/auth`)
+
+#### 1. User Registration (`POST /v1/auth/signup`)
+- **Access**: Public
+- **Description**: Registers a new user account with hashed password and generates a JWT session token.
+- **Request Headers**:
+  - `Content-Type: application/json`
+- **Request Body**:
+```json
 {
-  messageId: { type: String, required: true, unique: true },
-  sessionId: { type: String, required: true, index: true },
-  userId: { type: String, required: true, index: true }, // Scoped to owner
-  sender: { type: String, enum: ['USER', 'ASSISTANT'], required: true },
-  content: { type: String, required: true },
-  citations: [
+  "name": "Jane Doe",
+  "email": "jane.doe@example.com",
+  "password": "SecurePassword123!"
+}
+```
+- **Validation Constraints**:
+  - `name`: String, trimmed, min 2, max 100 characters.
+  - `email`: String, valid email format, required.
+  - `password`: String, min 6 characters, required.
+- **Success Response (201 Created)**:
+```json
+{
+  "status": "Success",
+  "message": "User registered successfully",
+  "statusCode": 201,
+  "response": {
+    "user": {
+      "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+      "name": "Jane Doe",
+      "email": "jane.doe@example.com"
+    },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+- **Error Responses**:
+  - `400 Bad Request` (`errorCode: "SIGNUP_ERROR"`): Email already registered or invalid fields.
+
+#### 2. User Login (`POST /v1/auth/login`)
+- **Access**: Public
+- **Description**: Authenticates email and password credentials, returning a signed JWT token.
+- **Request Headers**:
+  - `Content-Type: application/json`
+- **Request Body**:
+```json
+{
+  "email": "jane.doe@example.com",
+  "password": "SecurePassword123!"
+}
+```
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Login successful",
+  "statusCode": 200,
+  "response": {
+    "user": {
+      "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+      "name": "Jane Doe",
+      "email": "jane.doe@example.com"
+    },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+- **Error Responses**:
+  - `401 Unauthorized` (`errorCode: "LOGIN_ERROR"`): Invalid email or password.
+
+#### 3. Current User Profile (`GET /v1/auth/me`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Returns profile information of the currently authenticated token bearer.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Current user profile",
+  "statusCode": 200,
+  "response": {
+    "user": {
+      "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+      "email": "jane.doe@example.com",
+      "name": "Jane Doe"
+    }
+  }
+}
+```
+- **Error Responses**:
+  - `401 Unauthorized` (`errorCode: "UNAUTHORIZED"`): Missing or expired Bearer token.
+
+---
+
+### 4.2 Workspace & Session Service (`/v1/sessions`)
+
+#### 4. List Sessions (`GET /v1/sessions`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Retrieves a cursor-paginated list of user-owned workspaces filtered by status and search terms.
+- **Query Parameters**:
+  - `status` (string, optional, enum: `ACTIVE`, `ARCHIVED`, default: `ACTIVE`)
+  - `cursor` (string, optional): Base64-encoded JSON cursor `{"updatedAt":"...","_id":"..."}`
+  - `limit` (integer, optional, min: 1, max: 50, default: 12)
+  - `search` (string, optional): Regex search string across `title` and `description`.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Sessions fetched successfully",
+  "statusCode": 200,
+  "response": {
+    "sessions": [
+      {
+        "sessionId": "a9082ef1-1824-4f29-a1b7-cd349281a890",
+        "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+        "title": "Q3 Financial Audit",
+        "description": "Cross-examination of quarterly balance sheets and filings.",
+        "status": "ACTIVE",
+        "documentCount": 3,
+        "isDeleted": false,
+        "deletedAt": null,
+        "createdAt": "2026-09-17T18:00:00.000Z",
+        "updatedAt": "2026-09-17T18:30:00.000Z"
+      }
+    ],
+    "nextCursor": "eyJ1cGRhdGVkQXQiOiIyMDI2LTA5LTE3VDE4OjMwOjAwLjAwMFoiLCJfaWQiOiI2NGVmYWI...\"==",
+    "hasMore": true
+  }
+}
+```
+- **Error Responses**:
+  - `400 Bad Request` (`errorCode: "BAD_REQUEST"`): Malformed base64 cursor string.
+
+#### 5. Get Single Session (`GET /v1/sessions/:id`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Fetches detailed session metadata by ID. Strictly scoped to authenticated user to verify ownership.
+- **Path Parameters**:
+  - `id`: Session UUID.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Session fetched successfully",
+  "statusCode": 200,
+  "response": {
+    "sessionId": "a9082ef1-1824-4f29-a1b7-cd349281a890",
+    "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+    "title": "Q3 Financial Audit",
+    "description": "Quarterly balance sheets and filings.",
+    "status": "ACTIVE",
+    "documentCount": 3,
+    "isDeleted": false,
+    "deletedAt": null,
+    "createdAt": "2026-09-17T18:00:00.000Z",
+    "updatedAt": "2026-09-17T18:30:00.000Z"
+  }
+}
+```
+- **Error Responses**:
+  - `404 Not Found` (`errorCode: "FORBIDDEN"`): Session does not exist, is soft-deleted, or belongs to another user.
+
+#### 6. Create Session (`POST /v1/sessions`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Creates a new workspace session bound to the caller's `userId`.
+- **Request Body**:
+```json
+{
+  "title": "Vendor Contract Review",
+  "description": "Master Services Agreements 2026"
+}
+```
+- **Success Response (201 Created)**:
+```json
+{
+  "status": "Success",
+  "message": "Session created successfully",
+  "statusCode": 201,
+  "response": {
+    "sessionId": "b11c9902-12f4-4e2b-b991-83da901c381f",
+    "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+    "title": "Vendor Contract Review",
+    "description": "Master Services Agreements 2026",
+    "status": "ACTIVE",
+    "documentCount": 0,
+    "isDeleted": false,
+    "deletedAt": null,
+    "createdAt": "2026-09-17T19:00:00.000Z",
+    "updatedAt": "2026-09-17T19:00:00.000Z"
+  }
+}
+```
+- **Error Responses**:
+  - `400 Bad Request` (`errorCode: "Validation Error"`): Session title is missing or blank.
+
+#### 7. Update Session (`PATCH /v1/sessions/:id`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Updates workspace title, description, or status (`ACTIVE` vs `ARCHIVED`).
+- **Path Parameters**:
+  - `id`: Session UUID.
+- **Request Body**:
+```json
+{
+  "title": "Vendor Contract Review (Archived)",
+  "status": "ARCHIVED"
+}
+```
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Session updated successfully",
+  "statusCode": 200,
+  "response": {
+    "sessionId": "b11c9902-12f4-4e2b-b991-83da901c381f",
+    "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+    "title": "Vendor Contract Review (Archived)",
+    "status": "ARCHIVED",
+    "documentCount": 2,
+    "updatedAt": "2026-09-17T19:15:00.000Z"
+  }
+}
+```
+- **Error Responses**:
+  - `404 Not Found` (`errorCode: "FORBIDDEN"`): Session not found or owned by another tenant.
+
+#### 8. Delete Session (`DELETE /v1/sessions/:id`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Executes cascading soft deletion across the session, its documents, chunks, and chat messages in MongoDB while preserving raw files in S3.
+- **Path Parameters**:
+  - `id`: Session UUID.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Session and associated documents deleted successfully",
+  "statusCode": 200,
+  "response": null
+}
+```
+- **Error Responses**:
+  - `404 Not Found` (`errorCode: "FORBIDDEN"`): Target session not found or unauthorized.
+
+---
+
+### 4.3 Document Ingestion & Storage Service (`/v1/sessions/:id/documents`)
+
+#### 9. List Documents (`GET /v1/sessions/:id/documents`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Returns all non-deleted documents in the session.
+- **Path Parameters**:
+  - `id`: Session UUID.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Documents fetched successfully",
+  "statusCode": 200,
+  "response": [
     {
-      documentId: String,
-      fileName: String,
-      pageNumber: Number,
-      snippet: String,
-      score: Number
+      "documentId": "c88f9104-e349-49aa-9b1b-90a4175317b2",
+      "sessionId": "a9082ef1-1824-4f29-a1b7-cd349281a890",
+      "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+      "fileName": "q3_filing.pdf",
+      "mimeType": "application/pdf",
+      "fileSize": 524288,
+      "s3Key": "sessions/a9082ef1-1824-4f29-a1b7-cd349281a890/c88f9104-e349-49aa-9b1b-90a4175317b2/q3_filing.pdf",
+      "s3Bucket": "s3-document-processor",
+      "status": "READY",
+      "pageCount": 14,
+      "summary": "Quarterly balance sheet indicating 18% YoY net income growth.",
+      "createdAt": "2026-09-17T18:10:00.000Z"
     }
-  ],
-  timestamp: { type: Date, default: Date.now },
-  isDeleted: { type: Boolean, default: false, index: true },
-  deletedAt: { type: Date, default: null }
+  ]
+}
+```
+
+#### 10. Upload Documents (`POST /v1/sessions/:id/documents`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Receives multipart file uploads, uploads raw files to AWS S3, persists document records with status `PROCESSING`, and dispatches background processing jobs to AWS SQS.
+- **Path Parameters**:
+  - `id`: Session UUID.
+- **Request Headers**:
+  - `Content-Type: multipart/form-data`
+- **Request Payload**:
+  - Field name: `files` (array of multipart file buffers; configurable thresholds with initial defaults: max 10 MB per file, max 10 files per batch).
+- **Success Response (202 Accepted)**:
+```json
+{
+  "status": "Success",
+  "message": "Documents uploaded and processing started",
+  "statusCode": 202,
+  "response": [
+    {
+      "documentId": "e12f0092-23aa-4481-912a-338294103810",
+      "sessionId": "a9082ef1-1824-4f29-a1b7-cd349281a890",
+      "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+      "fileName": "balance_sheet.pdf",
+      "mimeType": "application/pdf",
+      "fileSize": 412980,
+      "s3Key": "sessions/a9082ef1-1824-4f29-a1b7-cd349281a890/e12f0092-23aa-4481-912a-338294103810/balance_sheet.pdf",
+      "s3Bucket": "s3-document-processor",
+      "status": "PROCESSING",
+      "pageCount": 0
+    }
+  ]
+}
+```
+- **Error Responses**:
+  - `400 Bad Request` (`errorCode: "Validation Error"`): No files uploaded, batch count exceeded, or invalid file format.
+  - `413 Payload Too Large`: Uploaded file exceeds configured file size limit (initial default: 10 MB).
+
+#### 11. Document Preview & Presigned URL (`GET /v1/sessions/:id/documents/:docId/preview`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Generates temporary AWS S3 presigned URLs for inline viewing and attachment download, accompanied by a partial text buffer preview.
+- **Path Parameters**:
+  - `id`: Session UUID.
+  - `docId`: Document UUID.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Presigned preview URL generated",
+  "statusCode": 200,
+  "response": {
+    "url": "https://s3-document-processor.s3.ap-south-1.amazonaws.com/sessions/...?X-Amz-Signature=...",
+    "downloadUrl": "https://s3-document-processor.s3.ap-south-1.amazonaws.com/sessions/...?response-content-disposition=attachment...",
+    "summary": "Quarterly balance sheet indicating 18% YoY net income growth.",
+    "pageCount": 14,
+    "fileName": "balance_sheet.pdf",
+    "mimeType": "application/pdf",
+    "fileSize": 412980,
+    "previewText": "CONSOLIDATED STATEMENT OF EARNINGS...",
+    "isTruncated": false,
+    "maxPreviewBytes": 256000
+  }
+}
+```
+
+#### 12. Retry Document Ingestion (`POST /v1/sessions/:id/documents/:docId/retry`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Clears previously failed chunks, resets document status to `PROCESSING`, and re-queues ingestion through AWS SQS.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Document retry scheduled successfully",
+  "statusCode": 200,
+  "response": {
+    "documentId": "e12f0092-23aa-4481-912a-338294103810",
+    "status": "PROCESSING",
+    "errorMessage": null
+  }
+}
+```
+
+#### 13. Delete Document (`DELETE /v1/sessions/:id/documents/:docId`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Soft deletes a document and all its corresponding chunks in MongoDB and decrements the workspace document count.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Document deleted successfully",
+  "statusCode": 200,
+  "response": null
 }
 ```
 
 ---
 
-## 4. Authentication & IDOR Security Architecture
+### 4.4 Conversational Query & RAG Service (`/v1/sessions/:id`)
+
+#### 14. Conversational Session Query (`POST /v1/sessions/:id/query`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Performs cosine semantic retrieval across session document chunks, synthesizes answers using Google Gemini LLM, and emits responses either synchronously or as an SSE stream.
+- **Path Parameters**:
+  - `id`: Session UUID.
+- **Request Body**:
+```json
+{
+  "prompt": "What was the operating cash flow in Q3?",
+  "stream": true
+}
+```
+
+##### Protocol Option A: Streaming Mode (`stream: true`)
+- **Response Headers**:
+  - `Content-Type: text/event-stream`
+  - `Cache-Control: no-cache`
+  - `Connection: keep-alive`
+- **Stream Frame Flow**:
+```
+data: {"type":"token","content":"Based"}
+
+data: {"type":"token","content":" on"}
+
+data: {"type":"token","content":" the Q3 balance sheet [1], operating cash flow reached $4.2M."}
+
+data: {"type":"citations","citations":[{"documentId":"e12f0092-23aa-4481-912a-338294103810","fileName":"balance_sheet.pdf","pageNumber":3,"snippet":"Cash flows from operating activities totaled $4,200,000 for the quarter ended September 30...","score":0.892}]}
+
+data: [DONE]
+```
+
+##### Protocol Option B: Synchronous Mode (`stream: false`)
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Query successful",
+  "statusCode": 200,
+  "response": {
+    "answer": "Based on the Q3 balance sheet [1], operating cash flow reached $4.2M.",
+    "citations": [
+      {
+        "documentId": "e12f0092-23aa-4481-912a-338294103810",
+        "fileName": "balance_sheet.pdf",
+        "pageNumber": 3,
+        "snippet": "Cash flows from operating activities totaled $4,200,000 for the quarter ended September 30...",
+        "score": 0.892
+      }
+    ]
+  }
+}
+```
+
+#### 15. Message History (`GET /v1/sessions/:id/messages`)
+- **Access**: Authenticated (`authenticateToken`)
+- **Description**: Retrieves the complete chat message timeline for the specified session.
+- **Path Parameters**:
+  - `id`: Session UUID.
+- **Success Response (200 OK)**:
+```json
+{
+  "status": "Success",
+  "message": "Messages retrieved successfully",
+  "statusCode": 200,
+  "response": [
+    {
+      "messageId": "91a82f31-89ab-4881-8172-11a3b4c5d6e7",
+      "sessionId": "a9082ef1-1824-4f29-a1b7-cd349281a890",
+      "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+      "sender": "USER",
+      "content": "What was the operating cash flow in Q3?",
+      "citations": [],
+      "timestamp": "2026-09-17T19:20:00.000Z"
+    },
+    {
+      "messageId": "88e71b22-990a-4221-a1b2-22c3d4e5f6a7",
+      "sessionId": "a9082ef1-1824-4f29-a1b7-cd349281a890",
+      "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+      "sender": "ASSISTANT",
+      "content": "Based on the Q3 balance sheet [1], operating cash flow reached $4.2M.",
+      "citations": [
+        {
+          "documentId": "e12f0092-23aa-4481-912a-338294103810",
+          "fileName": "balance_sheet.pdf",
+          "pageNumber": 3,
+          "snippet": "Cash flows from operating activities totaled $4,200,000 for the quarter ended September 30...",
+          "score": 0.892
+        }
+      ],
+      "timestamp": "2026-09-17T19:20:02.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## 5. Asynchronous Message Queue Contract & Worker Processing (AWS SQS)
+
+### 5.1 Queue Topology
+- **Primary Queue**: `document_processing_queue_local`
+- **Visibility Timeout**: 180 seconds
+- **Message Retention**: 4 days
+- **Consumer Framework**: `sqs-consumer` long-polling with graceful shutdown hooks (`SIGINT`, `SIGTERM`).
+
+### 5.2 SQS Message Payload Data Contract
+```json
+{
+  "documentId": "e12f0092-23aa-4481-912a-338294103810",
+  "sessionId": "a9082ef1-1824-4f29-a1b7-cd349281a890",
+  "userId": "d7b42a9b-3a56-4c28-98e1-5bc430e7162b",
+  "s3Key": "sessions/a9082ef1-1824-4f29-a1b7-cd349281a890/e12f0092-23aa-4481-912a-338294103810/balance_sheet.pdf",
+  "fileName": "balance_sheet.pdf",
+  "mimeType": "application/pdf"
+}
+```
+
+### 5.3 Worker Processing Sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Client as Frontend UI
-    participant Middleware as authenticateToken Middleware
-    participant Controller as Business Controller
-    participant DB as MongoDB / S3
+    participant SQS as AWS SQS
+    participant Worker as Background Worker
+    participant S3 as AWS S3
+    participant Parser as Parsing Service
+    participant Gemini as Gemini AI Service
+    participant Mongo as MongoDB
 
-    Client->>Middleware: Request with Authorization: Bearer <token>
-    alt Token Missing or Invalid
-        Middleware-->>Client: 401 Unauthorized { errorCode: "UNAUTHORIZED" }
-    else Valid Token
-        Middleware->>Middleware: Verify JWT & extract { userId, email, name }
-        Middleware->>Controller: req.user = decodedToken
-        Controller->>DB: Query strictly scoped by { id, userId: req.user.userId, isDeleted: false }
-        alt Resource not owned by user or deleted
-            DB-->>Controller: null
-            Controller-->>Client: 404 / 403 Forbidden { errorCode: "FORBIDDEN" }
-        else Owner Verified
-            DB-->>Controller: Authorized data
-            Controller-->>Client: 200 Success
-        end
+    SQS->>Worker: Delivers Message Body
+    Worker->>S3: Downloads Raw File Buffer via s3Key
+    Worker->>Parser: Parses Document (pdf2json / mammoth)
+    Parser-->>Worker: Returns { pageCount, rawText, chunks }
+    
+    par Document Summarization & Vector Embeddings
+        Worker->>Gemini: generateDocumentSummary(rawText)
+        Gemini-->>Worker: Returns 2-3 sentence summary
+    and Chunk Embedding Generation
+        Worker->>Gemini: getEmbeddingsForChunks(chunks)
+        Gemini-->>Worker: Returns 3072-dim vectors for each chunk
     end
+
+    Worker->>Mongo: Verifies document & session are not deleted
+    Worker->>Mongo: Bulk inserts document_chunks
+    Worker->>Mongo: Updates document status: READY, pageCount, summary
+    Worker->>SQS: Acknowledges and deletes message from queue
 ```
+
+### 5.4 In-Process Fallback Mode
+If AWS SQS is unreachable or disabled during local development, the API controller catches the queue failure and immediately executes the parsing and embedding pipeline asynchronously within the Node.js event loop using cooperative scheduling (`setImmediate`), ensuring local workflows proceed without interruption.
 
 ---
 
-## 5. REST API Specification
+## 6. Document Parsing, Chunking & RAG Retrieval Pipeline
 
-### 5.1. Authentication Endpoints (Public)
-- `POST /v1/auth/signup`: Register user with `{ name, email, password }`.
-- `POST /v1/auth/login`: Authenticate with `{ email, password }` and return JWT token.
-- `GET /v1/auth/me`: Get authenticated user profile (`authenticateToken`).
+### 6.1 Parsing Algorithms
+- **PDF Documents**: Page-level extraction using `pdf2json`. Handles URI-encoded character recovery and defensive fallbacks to preserve structural page boundaries.
+- **DOCX Documents**: Native extraction via `mammoth`, converting Word paragraphs and tables into structured clean text.
+- **Plain Text / Code Files**: Direct UTF-8 buffer decoding with line-break normalization.
 
-### 5.2. Sessions API (Protected with `authenticateToken`)
-- `GET /v1/sessions`: Cursor-paginated session list (`where: { userId, status, isDeleted: false }`). Accepts `cursor`, `limit` (max 50), and `search`. Returns `{ sessions, nextCursor, hasMore }`.
-- `GET /v1/sessions/:id`: Fetch single session by ID scoped to `userId` (enables reload recovery).
-- `POST /v1/sessions`: Create new session stamped with `req.user.userId`.
-- `PATCH /v1/sessions/:id`: Update session title or status (`where: { sessionId, userId, isDeleted: false }`).
-- `DELETE /v1/sessions/:id`: Cascaded soft deletion of MongoDB session, documents, chunks, and chat history (`where: { sessionId, userId }`). Preserves S3 raw assets.
+### 6.2 Chunking Specifications
+- **Target Chunk Size**: ~1,200 characters per chunk.
+- **Chunk Overlap**: 200 characters to prevent loss of context across boundaries.
+- **Metadata Stamping**: Every chunk is stamped with its source `documentId`, `sessionId`, `userId`, `pageNumber`, and sequence `chunkIndex`.
 
-### 5.3. Documents API (Protected with `authenticateToken`)
-- `POST /v1/sessions/:id/documents`: Multipart upload (`files[]`, max 1MB per file, max 4 files). Validates session ownership, uploads raw file to S3, persists document records with status `QUEUED`, and dispatches jobs to AWS SQS queue.
-- `GET /v1/sessions/:id/documents`: List documents belonging to session (`where: { sessionId, userId, isDeleted: false }`).
-- `GET /v1/sessions/:id/documents/:docId/preview`: Generate presigned AWS S3 `GetObject` URL (`where: { documentId, userId, isDeleted: false }`).
-- `DELETE /v1/sessions/:id/documents/:docId`: Soft delete document from MongoDB and associated chunks (`where: { documentId, sessionId, userId }`).
+### 6.3 Embedding & Vector Similarity Algorithm
+- **Embedding Model**: `gemini-embedding-001` (3072-dimensional vector floats).
+- **Vector Retrieval**: Computes dot-product cosine similarity between the query embedding and stored chunk vectors:
+```
+Cosine Similarity = (A · B) / (||A|| * ||B||)
+```
+- **Filter Constraints**: Strictly scoped to `{ sessionId, userId, isDeleted: false }`.
+- **Top-K Selection**: Top 5 highest scoring chunks are assembled into the conversational prompt context.
 
-### 5.4. Conversational Query & Chat API (Protected with `authenticateToken`)
-- `POST /v1/sessions/:id/query`: Ask question over session documents.
-  - Body: `{ "prompt": "...", "stream": true }`.
-  - Vectors retrieved from MongoDB strictly scoped to `{ sessionId, userId, isDeleted: false }`.
-  - Streams answer tokens followed by citation references via Server-Sent Events, backed by fallback LLM cascades.
-- `GET /v1/sessions/:id/messages`: Retrieve chat message history (`where: { sessionId, userId, isDeleted: false }`).
+### 6.4 Model Fallback Cascade
+To safeguard against rate limits or service degradation, LLM calls cascade through multiple model configurations:
+1. Primary: `gemini-2.5-flash`
+2. Fallback: `gemini-2.5-flash-lite`
 
 ---
 
-## 6. Cloud & Configuration Variables (`.env`)
+## 7. Security Architecture & IDOR Prevention
 
-```ini
-ENV=local
-PORT=3000
+### 7.1 Token Verification
+All protected requests execute the `authenticateToken` middleware:
+1. Extracts `Authorization: Bearer <token>` header.
+2. Verifies cryptographic signature using HMAC-SHA256 (`JWT_SECRET`).
+3. Decodes user payload and attaches `req.user = { userId, email, name }`.
+4. Rejects unauthenticated requests with `401 Unauthorized`.
 
-# MongoDB Configuration
-MONGO_HOST_IP=127.0.0.1:27017
-MONGO_USER=root
-MONGO_PASSWORD=password
-MONGO_DATABASE=document_processor
-MONGO_SRV_FLAG=false
+### 7.2 Database Tenant Scoping Rules
+Every repository query enforces ownership through compound criteria:
+- **Session Operations**: `{ sessionId: req.params.id, userId: req.user.userId, isDeleted: false }`
+- **Document Operations**: `{ documentId: req.params.docId, sessionId: req.params.id, userId: req.user.userId, isDeleted: false }`
+- **Chunk Queries**: `{ sessionId: req.params.id, userId: req.user.userId, isDeleted: false }`
+- **Message Queries**: `{ sessionId: req.params.id, userId: req.user.userId, isDeleted: false }`
 
-# MySQL Configuration (strictly for users)
-MYSQL_HOST_IP=127.0.0.1
-MYSQL_USER=root
-MYSQL_PASSWORD=password
-MYSQL_DATABASE=document_processor
+If a user attempts to access or mutate an ID belonging to another user, the query resolves to `null`, and the API returns a `404 Not Found` / `403 Forbidden` envelope, preventing enumeration and data exposure.
 
-# Google Gemini API
-GEMINI_API_KEY=AIzaSy...
-GEMINI_LLM_MODEL=gemini-3.6-flash
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+---
 
-# AWS S3 Configuration
-AWS_REGION=ap-south-1
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=...
-AWS_S3_BUCKET_NAME=s3-document-processor
+## 8. Configuration & Environment Matrix
 
-# Authentication
-JWT_SECRET=document_processor_secret_jwt_key_2026_super_secure
-JWT_EXPIRES_IN=7d
-```
+| Variable Key | Type | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `ENV` | String | Yes | `local` | Application runtime environment (`local`, `dev`, `prod`). |
+| `PORT` | Integer | Yes | `3000` | HTTP listening port for Express application server. |
+| `MONGO_HOST_IP` | String | Yes | `127.0.0.1:27017` | MongoDB host IP and port address. |
+| `MONGO_USER` | String | Yes | `root` | MongoDB connection username. |
+| `MONGO_PASSWORD` | String | Yes | None | MongoDB connection password. |
+| `MONGO_DATABASE` | String | Yes | `document_processor` | Target MongoDB database name. |
+| `MONGO_SRV_FLAG` | Boolean | No | `false` | Enable DNS SRV connection strings for MongoDB Atlas. |
+| `JWT_SECRET` | String | Yes | None | Secret key used for signing and verifying JWT tokens. |
+| `JWT_EXPIRES_IN` | String | No | `7d` | JWT token validity window. |
+| `AWS_REGION` | String | Yes | `ap-south-1` | AWS deployment region for S3 and SQS. |
+| `AWS_ACCESS_KEY_ID` | String | Yes | None | AWS IAM Access Key ID. |
+| `AWS_SECRET_ACCESS_KEY` | String | Yes | None | AWS IAM Secret Access Key. |
+| `AWS_S3_BUCKET_NAME` | String | Yes | None | Target AWS S3 bucket for raw document storage. |
+| `AWS_SQS_DOCUMENT_PROCESSING_QUEUE` | String | No | `document_processing_queue_local` | AWS SQS queue name for document ingestion jobs. |
+| `MAX_FILE_SIZE_MB` | Integer | No | `10` | Maximum allowable file size in megabytes for uploaded documents (configurable). |
+| `MAX_BATCH_FILE_COUNT` | Integer | No | `10` | Maximum allowable number of files per batch upload action (configurable). |
+| `GEMINI_API_KEY` | String | Yes | None | Google Cloud Gemini API key for embeddings and generation. |
+| `GEMINI_LLM_MODEL` | String | No | `gemini-2.5-flash` | Primary Gemini model identifier for conversational Q&A. |
+| `GEMINI_EMBEDDING_MODEL` | String | No | `gemini-embedding-001` | Gemini model identifier for text vector embeddings. |

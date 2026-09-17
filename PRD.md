@@ -1,40 +1,45 @@
 # Product Requirements Document (PRD)
-## Document Intelligence & Query System: "From Messy Documents to Structured, Queryable Data"
+## PageSense: Document Intelligence & Query System
 
 ---
 
 ## 1. Executive Summary & Vision
 
-Organizations and individuals deal with a deluge of unstructured and semi-structured documents (scanned PDFs, Word files, receipts, contracts, reports, plain text). Valuable business insights remain trapped within these files because they are not easily searchable, relational, or conversational.
+Organizations and knowledge workers deal with large volumes of unstructured and semi-structured documents daily, including contracts, financial statements, research papers, reports, policies, forms, and receipts. The valuable information trapped within these files is difficult to locate quickly, analyze across documents, or query conversationally.
 
-This product is an end-to-end web application that ingests unstructured and semi-structured documents, applies automated parsing, OCR, chunking, and extraction, and converts them into structured, queryable, and conversational data. Users interact with their documents via isolated, user-authenticated workspaces (sessions), leveraging hybrid search and an AI-powered conversational Q&A interface with source citations.
+The **Document Intelligence & Query System** transforms static, unstructured documents into an interactive, structured, and conversational knowledge base. Users create dedicated topic-based workspaces, upload multiple documents in diverse formats, and instantly ask natural-language questions. The system delivers synthesized answers with pinpoint citations referencing exact source pages and passages, allowing users to verify facts with zero friction while maintaining strict confidentiality and workspace isolation.
 
 ---
 
-## 2. Core Objectives & Success Metrics
+## 2. Problem Statement & Opportunity
 
-### Objectives
-1. **User Authentication & Tenant Isolation**: Secure user registration and login with email/password via JWT Bearer authentication. All workspaces, documents, and vectors are strictly scoped to the owner to prevent IDOR access.
-2. **Seamless Document Ingestion**: Upload various document formats (`.pdf`, `.docx`, `.txt`, images/scans) with zero manual formatting needed, stored securely in AWS S3.
-3. **Robust Extraction & Structuring**: Automate OCR and text/metadata extraction, breaking complex documents into structured entities, chunks, and vector embeddings.
-4. **Session-based Organization**: Provide workspace isolation where documents belong to specific projects/topics (sessions), with full lifecycle control (create, archive, restore, delete with custom in-app confirmation modals).
-5. **Interactive Query & Chat Interface**: Allow natural language questions and search queries with pinpoint citations (page numbers, text references), powered by Google Gemini.
-6. **State Persistence**: Preserve active session workspace across page reloads and browser navigation without losing context.
+### 2.1 The Problem
+- **Information Silos**: Critical data is locked in disparate document formats (PDFs, Word documents, text files, scanned images) across personal computers and file repositories.
+- **Time-Consuming Manual Search**: Reviewing multi-page documents to locate specific clauses, numbers, or terms requires hours of manual skimming and keyword searching that fails to grasp contextual meaning.
+- **Lack of Trust in AI**: Traditional AI chat systems frequently hallucinate information or fail to provide verifiable source references, making them unsuitable for legal, financial, or analytical tasks.
+- **Context Loss**: Existing tools do not provide organized workspaces where multiple related documents can be analyzed together while preserving context across browser sessions.
 
-### Key Performance Indicators (KPIs)
-- **Processing Time**: < 15 seconds for single-page documents; < 45 seconds for a 20-page PDF.
-- **Extraction Accuracy**: High-fidelity OCR and text extraction retaining document layout hierarchy.
-- **Search & Response Latency**: < 2 seconds for search results; < 3 seconds for first-token streaming in conversational Q&A.
-- **Citation Precision**: 100% of LLM answers supported by traceable document source snippets.
-- **Security**: 0% unauthorized cross-user data leakage (strict IDOR enforcement across all API endpoints).
+### 2.2 The Product Opportunity
+By combining automated text extraction, intelligent contextual search, and conversational artificial intelligence with verifiable source citations, this system provides users with an authoritative "second brain" for their documents.
 
 ---
 
 ## 3. Target Personas
 
-1. **Knowledge Worker / Analyst**: Needs to cross-reference multiple policy documents, whitepapers, or quarterly reports quickly.
-2. **Operations & Finance Personnel**: Deals with invoices, purchase orders, statements, and forms needing structured field lookup.
-3. **Legal / Compliance Auditor**: Reviews contracts, identifying specific clauses, terms, and obligations across document versions.
+### Persona 1: Research & Policy Analyst
+- **Role**: Reviews regulatory guidelines, industry reports, and academic research.
+- **Pain Point**: Needs to cross-examine multiple 50+ page documents to synthesize findings.
+- **Goal**: Ask multi-document questions and receive syntheses with direct citations.
+
+### Persona 2: Operations & Finance Specialist
+- **Role**: Manages invoices, vendor contracts, receipts, and purchase orders.
+- **Pain Point**: Spends hours verifying line items, dates, and payment clauses across files.
+- **Goal**: Quickly locate exact figures, obligations, and terms across documents.
+
+### Persona 3: Legal & Compliance Auditor
+- **Role**: Conducts compliance reviews and contract audits.
+- **Pain Point**: Needs 100% confidence that an answer is accurate and directly grounded in the source text.
+- **Goal**: Clickable citations that highlight the exact passage and page from the original document.
 
 ---
 
@@ -42,89 +47,131 @@ This product is an end-to-end web application that ingests unstructured and semi
 
 ```mermaid
 journey
-    title User Interaction Lifecycle
-    section Authentication
-      Sign up with name, email & password: 5: User
-      Sign in and receive JWT token: 5: User
-    section Session Management
-      View personal sessions dashboard: 5: User
-      Create new workspace session: 5: User
-      Archive / Restore / Delete session: 4: User
-    section Ingestion & Processing
-      Upload PDF / DOCX / TXT to S3: 5: User
-      Document validation & queueing: 5: System
-      Text Extraction & Safe URI Parsing: 4: System
-      Vector Embedding (gemini-embedding-001): 4: System
-      Status notification (Ready): 5: System
-    section Query & Exploration
-      Ask conversational questions: 5: User
-      Gemini streaming token-by-token: 5: System
-      Inspect source citations in Drawer: 5: User
-      Preview original document in S3: 4: User
-      Reload page & resume session seamlessly: 5: User
+    title End-to-End User Experience Lifecycle
+    section 1. Onboarding & Access
+      Create personal account with name, email, and password: 5: User
+      Sign in to access personal dashboard: 5: User
+    section 2. Workspace Management
+      Browse active workspaces with document summaries: 5: User
+      Create a new dedicated workspace for a project: 5: User
+      Archive completed workspaces or restore them: 4: User
+      Search workspaces by title or description: 5: User
+    section 3. Document Ingestion
+      Drag and drop documents into workspace: 5: User
+      Track real-time processing status indicators: 5: User
+      Preview uploaded documents or retry failed uploads: 4: User
+    section 4. Conversational Discovery
+      Ask natural language questions across documents: 5: User
+      Watch response stream in real-time: 5: User
+      Inspect inline citation chips to view source passages: 5: User
+      Open original document to verify context: 5: User
+      Leave and return with workspace state automatically preserved: 5: User
 ```
 
 ---
 
 ## 5. Functional Requirements
 
-### 5.1. Authentication & User Management
-- **FR-1.1 Email Registration & Login**: Users register with full name, email, and password (hashed with bcrypt). Returns a signed JWT.
-- **FR-1.2 Bearer Authentication**: Middleware validates tokens for all data endpoints. Unauthenticated requests are rejected with 401 Unauthorized.
-- **FR-1.3 User Scoping & IDOR Prevention**: Every session, document, chunk, and message is stamped with `userId`. Database queries strictly check `{ id, userId }` to guarantee complete tenant isolation.
+### 5.1 Account & Identity Management
+- **User Registration**: New users can register with their full name, email address, and a secure password.
+- **User Authentication**: Secure login screen allowing registered users to sign in.
+- **Personal Workspace Isolation**: Every user operates within an isolated environment. Users can never view, search, or access another user's workspaces, files, or chat histories.
+- **Session Continuity**: Returning users remain signed in across page refreshes and browser sessions until they explicitly sign out.
 
-### 5.2. Session Management (Home Dashboard)
-- **FR-2.1 Session Listing & Cursor-Based Pagination**:
-  - Display cards of user-owned active and archived sessions showing title, document count, and relative timestamps.
-  - Efficient cursor-based infinite scrolling on the frontend with a modern circular loader.
-  - Compound cursor `(updatedAt, _id)` query execution on the backend ensuring stable pagination without duplicate or skipped items.
-  - Server-side search filtering across session title and description.
-- **FR-2.2 Create Session**: Modal action to create a named session with an optional description.
-- **FR-2.3 Archive / Restore**: Ability to archive sessions to keep the dashboard clean, with instant restore.
-- **FR-2.4 Soft Delete Session (In-App Modal)**: Delete session with a custom dark UI confirmation dialog. Performs cascading soft delete (`isDeleted: true`, `deletedAt`) across MongoDB sessions, documents, chunks, and chat messages while preserving underlying S3 assets.
-- **FR-2.5 Session Resume Across Reloads**: Selecting a session syncs the URL (`?session=<id>`). Browser page reloads automatically restore the active workspace.
+### 5.2 Workspace Management (Dashboard)
+- **Workspace Dashboard**: A clean home dashboard presenting all user-owned workspaces in an organized grid.
+- **Status Filtering**: Tabbed navigation to switch between **Active Workspaces** and **Archived Workspaces**.
+- **Search & Filtering**: Real-time search bar allowing users to filter workspaces by title or description.
+- **Workspace Cards**: Each workspace card displays:
+  - Workspace title and optional description
+  - Total number of uploaded documents
+  - Last activity and updated timestamp
+  - Quick action menu for archiving, restoring, or deleting
+- **Workspace Creation**: A modal dialog allowing users to name a new workspace and add an optional description.
+- **Archive & Restore**: Users can archive inactive workspaces to declutter their dashboard, with the ability to restore them at any time.
+- **Workspace Deletion**: Users can delete a workspace via a styled in-app confirmation dialog. Deleting a workspace removes it and its documents from active search without affecting cloud backups.
+- **Seamless State Resume**: When a user selects a workspace, the workspace ID is reflected in the URL. If the user refreshes their browser or shares their own workspace URL across tabs, the workspace is immediately restored without returning to the dashboard.
 
-### 5.3. Document Ingestion & Pipeline Processing
-- **FR-3.1 Upload Limits & File Handling**:
-  - Drag-and-drop dropzone supporting `.pdf`, `.docx`, `.txt`, `.png`, `.jpeg`, `.webp`, `.bmp`, `.tiff`.
-  - Max file size: 1 MB per file; max upload count: 4 files per batch.
-  - User-friendly backend error responses with dedicated frontend snackbar notifications (replacing modal browser alerts).
-- **FR-3.2 Processing Pipeline & SQS Queuing**:
-  - **Stage 1: S3 Upload**: Streamed raw file upload to AWS S3 (`ap-south-1`).
-  - **Stage 2: Asynchronous Job Queuing**: Jobs dispatched to AWS SQS queue (`document_processing_queue_local`) and processed by an isolated consumer worker.
-  - **Stage 3: Safe Parsing**: Page-level PDF extraction via `pdf2json` with malformed URI recovery; DOCX parsing via `mammoth`; cooperative event-loop yielding (`setImmediate`) to keep the Node.js event loop unblocked.
-  - **Stage 4: Chunking & Vectorization**: Semantic chunking (~1200 chars, 200 overlap, capped per file) and embeddings via `gemini-embedding-001`.
-- **FR-3.3 Ingestion Status Tracking**: Real-time status badges for each document: `Queued` ➔ `Processing` (auto-polled every 3s) ➔ `Ready` or `Failed`.
+### 5.3 Document Ingestion & Management
+- **Drag-and-Drop Ingestion**: An intuitive dropzone allowing users to drag and drop files or browse their computer.
+- **Supported Document Formats**:
+  - Portable Document Format (PDF)
+  - Microsoft Word Documents (DOCX)
+  - Plain Text and Structured Text Files (TXT, CSV, Markdown)
+  - Scanned Documents and Images (PNG, JPEG, WebP, TIFF)
+- **Ingestion Limits**:
+  - File size: Up to 10 MB per file (initial default, configurable)
+  - Batch upload: Up to 10 files per upload action (initial default, configurable)
+  - Visual validation alerts displayed when limits are exceeded
+- **Real-Time Processing Status**: Each document displays its current ingestion status:
+  - **Queued**: Document received and awaiting processing
+  - **Processing**: Document text, layout, and structure being analyzed
+  - **Ready**: Document fully indexed and available for querying
+  - **Failed**: Ingestion error with an option to retry
+- **Document List View**: Displays filename, file size, detected page count, and status badge.
+- **Document Failure & Retry**: One-click action on failed documents to retry processing without re-uploading the file.
+- **Document Preview & Download**:
+  - In-app preview displaying an AI-generated short summary (2-3 sentences) capturing core takeaways.
+  - Graceful content rendering across file types (text preview with smart truncation for large files, metadata fallback for binaries).
+  - Direct download button to retrieve the original uploaded file.
+- **Document Removal**: Ability to delete individual documents from the workspace with a confirmation prompt.
 
-### 5.4. Query & Exploration Interfaces
-- **FR-4.1 Conversational Chat Interface**:
-  - Natural language querying across all documents within the session.
-  - Streaming responses powered by Gemini API with multi-model fallback cascade (`gemini-2.5-flash` / `gemini-2.5-flash-lite`) to handle service capacity.
-  - Retry failed or unanswered prompts directly from the chat interface.
-  - Inline source citations showing document name, page number, and snippet preview on click.
-- **FR-4.2 Citation Drawer & Document Viewer**:
-  - Slide-over drawer displaying exact source text and page reference.
-  - One-click button to open/download the original file via presigned S3 URL.
+### 5.4 Conversational Q&A & Document Intelligence
+- **Natural Language Chat**: A conversational input field where users can ask questions in plain language regarding any or all documents in the active workspace.
+- **Real-Time Streaming Responses**: Answers appear progressively with a responsive streaming animation as they are generated.
+- **Multi-Document Synthesis**: The system answers questions by synthesizing information across multiple documents within the workspace.
+- **Inline Source Citations**:
+  - Generated answers include numbered citation chips (e.g., `[1] Contract.pdf (p. 4)`).
+  - Clicking any citation chip opens a slide-over inspection drawer.
+- **Source Inspection Drawer**:
+  - Displays the exact passage, source document name, and page number referenced by the citation.
+  - Provides a direct link to preview or open the original document.
+- **Chat History**: Full conversation history is retained within the workspace so users can review previous inquiries and responses.
+- **Prompt Retry**: Option to retry an unanswered or interrupted prompt directly from the conversation thread.
+
+### 5.5 Notifications & User Feedback
+- **In-App Confirmations**: Styled dialogs for destructive actions (e.g., deleting a workspace or document), avoiding native browser alerts.
+- **Non-Blocking Notifications**: Clear, dismissible toast notifications for system alerts, upload errors, and operational successes.
 
 ---
 
 ## 6. Non-Functional Requirements
 
-### 6.1. Security & Privacy
-- Zero cross-tenant data leakage (strict IDOR enforcement across all CRUD and vector retrieval queries).
-- Password hashing with bcrypt salt rounds = 10.
-- JWT tokens signed with expiration and validated at the middleware layer.
-- Encrypted AWS S3 document storage at rest and in transit.
+### 6.1 Usability & User Experience
+- Modern, high-contrast dark theme designed for extended research sessions.
+- Clear visual hierarchy with responsive feedback for all user actions.
+- Zero manual document configuration required; all formatting, text extraction, and indexing happen automatically.
 
-### 6.2. Performance & Scalability
-- Asynchronous SQS worker processing so file uploads and CPU-heavy text extraction never block Express HTTP threads.
-- Cursor-based database queries using compound indexed keys `(userId, status, isDeleted, updatedAt, _id)`.
-- Vector search cosine similarity retrieval < 300ms.
-- Fast token-by-token streaming with multi-model Gemini fallback.
+### 6.2 Performance & Responsiveness
+- **Document Ingestion**: Single-page documents ready for search within 15 seconds; multi-page documents within 45 seconds.
+- **Conversational Latency**: Initial response tokens begin streaming within 3 seconds of question submission.
+- **Workspace Navigation**: Instant switching between dashboard and workspace views.
+
+### 6.3 Security & Data Privacy
+- **Strict Tenant Isolation**: Complete logical separation between users; no user can access or infer data from another user's workspaces or documents.
+- **Data Protection at Rest & in Transit**: All user data, credentials, and uploaded files are protected with industry-standard encryption.
+- **Verifiable Answers**: Every AI answer must cite traceable excerpts from the user's uploaded documents to prevent inaccurate information.
+
+### 6.4 Reliability & Resilience
+- Graceful handling of network interruptions with automatic session state recovery.
+- Resilient document ingestion with retry capabilities for transient processing failures.
 
 ---
 
-## 7. Out of Scope for v1 (Future Scope)
-- Multi-user real-time collaboration within a single session.
-- Third-party cloud drive connectors (Google Drive, Dropbox).
-- Audio/video transcription ingestion.
+## 7. Product Boundaries & Future Roadmap
+
+### 7.1 In Scope for Version 1
+- Single-user workspace authentication and personal management.
+- Multi-document upload (PDF, DOCX, TXT, images) with configurable thresholds (initial defaults: up to 10 MB per file, max 10 files per batch).
+- Real-time document status tracking with one-click retry on ingestion failure.
+- In-app document preview with AI-generated executive summaries, graceful multi-format rendering, and original file download option.
+- Conversational querying with real-time answer streaming.
+- Exact inline citations, source passage inspection drawer, and document verification.
+- Workspace archiving, restoring, and deletion with state preservation across browser refreshes.
+
+### 7.2 Future Enhancements
+- Multi-user real-time collaboration and workspace sharing.
+- Audio and video file transcription and ingestion.
+- Direct cloud storage integrations (Google Drive, Microsoft OneDrive, Dropbox).
+- Automated export of conversations to PDF or presentation slides.
+- Custom tagging, labeling, and folder hierarchies within workspaces.

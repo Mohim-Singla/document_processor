@@ -130,12 +130,14 @@ journey
 - **Source Inspection Drawer**:
   - Displays the exact passage, source document name, and page number referenced by the citation.
   - Provides a direct link to preview or open the original document.
-- **Chat History**: Full conversation history is retained within the workspace so users can review previous inquiries and responses.
+- **Chat History & Seamless Navigation**:
+  - Full conversation history is retained within the workspace so users can review previous inquiries and responses.
+  - Recent messages load immediately upon opening a workspace, with older messages fetched seamlessly as the user scrolls up.
 - **Prompt Retry**: Option to retry an unanswered or interrupted prompt directly from the conversation thread.
 
 ### 5.5 Notifications & User Feedback
 - **In-App Confirmations**: Styled dialogs for destructive actions (e.g., deleting a workspace or document), avoiding native browser alerts.
-- **Non-Blocking Notifications**: Clear, dismissible toast notifications for system alerts, upload errors, and operational successes.
+- **Non-Blocking Toast Notifications**: Clear, dismissible toast notifications for system alerts, network disconnections/reconnections, session expiration/re-authentication prompts, file validation failures, and operational successes.
 
 ---
 

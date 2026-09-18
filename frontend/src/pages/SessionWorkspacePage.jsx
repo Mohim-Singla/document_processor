@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Sparkles, AlertCircle, RefreshCw, MessageSquare, FileText } from 'lucide-react';
 import DocumentDropzone from '../components/workspace/DocumentDropzone';
 import DocumentListItem from '../components/workspace/DocumentListItem';
 import ChatInterface from '../components/workspace/ChatInterface';
@@ -21,6 +21,7 @@ import {
 
 export default function SessionWorkspacePage({ session, onBack, onSessionUpdate }) {
   const isArchived = session?.status === 'ARCHIVED';
+  const [activeMobileTab, setActiveMobileTab] = useState('chat'); // 'chat' | 'documents'
   const [documents, setDocuments] = useState([]);
   const [messages, setMessages] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -246,36 +247,63 @@ export default function SessionWorkspacePage({ session, onBack, onSessionUpdate 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950">
       {/* Top Navigation */}
-      <header className="h-16 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/60 backdrop-blur-md shrink-0">
-        <div className="flex items-center gap-4">
+      <header className="h-16 border-b border-slate-800/80 px-3 sm:px-6 flex items-center justify-between bg-slate-900/60 backdrop-blur-md shrink-0 gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition"
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white p-1.5 sm:p-2 rounded-xl hover:bg-slate-800 transition shrink-0"
+            title="Back to Sessions"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Sessions</span>
+            <span className="hidden sm:inline">Back to Sessions</span>
           </button>
-          <div className="h-4 w-px bg-slate-800" />
-          <div>
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-              <span>{session.title}</span>
+          <div className="h-4 w-px bg-slate-800 shrink-0 hidden sm:block" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-white flex items-center gap-1.5 sm:gap-2 flex-wrap truncate">
+              <span className="truncate">{session.title}</span>
               {session.sessionId && (
-                <span className="text-xs font-mono font-normal text-slate-400">
+                <span className="text-xs font-mono font-normal text-slate-400 shrink-0">
                   - {session.sessionId.slice(-6)}
                 </span>
               )}
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isArchived ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'}`}>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${isArchived ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'}`}>
                 {session.status || 'ACTIVE'}
               </span>
             </h2>
             {session.description && (
-              <p className="text-[11px] text-slate-400 truncate max-w-md">{session.description}</p>
+              <p className="text-[11px] text-slate-400 truncate max-w-md hidden sm:block">{session.description}</p>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Mobile Tab Switcher Toggle */}
+          <div className="flex md:hidden items-center p-0.5 bg-slate-900 border border-slate-800 rounded-xl">
+            <button
+              onClick={() => setActiveMobileTab('chat')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                activeMobileTab === 'chat'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Chat</span>
+            </button>
+            <button
+              onClick={() => setActiveMobileTab('documents')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                activeMobileTab === 'documents'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Docs ({documents.length})</span>
+            </button>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Google Gemini Pro</span>
           </div>
@@ -283,9 +311,13 @@ export default function SessionWorkspacePage({ session, onBack, onSessionUpdate 
       </header>
 
       {/* Main Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Documents Sidebar */}
-        <aside className="w-84 xl:w-92 border-r border-slate-800/80 p-5 flex flex-col justify-between bg-slate-900/30 overflow-y-auto shrink-0">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Left Documents Sidebar: on mobile, shown when activeMobileTab === 'documents'; on md+, always visible */}
+        <aside
+          className={`w-full md:w-80 lg:w-84 xl:w-92 border-r border-slate-800/80 p-4 sm:p-5 flex flex-col justify-between bg-slate-900/30 overflow-y-auto shrink-0 ${
+            activeMobileTab === 'documents' ? 'flex' : 'hidden md:flex'
+          }`}
+        >
           <div className="space-y-5">
             {!isArchived && (
               <div>
@@ -328,8 +360,12 @@ export default function SessionWorkspacePage({ session, onBack, onSessionUpdate 
           </div>
         </aside>
 
-        {/* Center / Right Chat Workspace */}
-        <main className="flex-1 p-6 overflow-hidden">
+        {/* Center / Right Chat Workspace: on mobile, shown when activeMobileTab === 'chat'; on md+, always visible */}
+        <main
+          className={`flex-1 p-2 sm:p-4 md:p-6 overflow-hidden ${
+            activeMobileTab === 'chat' ? 'flex flex-col' : 'hidden md:flex md:flex-col'
+          }`}
+        >
           <ChatInterface
             messages={messages}
             onSendMessage={isArchived ? null : handleSendMessage}

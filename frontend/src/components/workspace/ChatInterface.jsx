@@ -61,9 +61,9 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/60 rounded-2xl border border-slate-800/80 overflow-hidden">
+    <div className="flex flex-col h-full bg-slate-900/60 rounded-xl sm:rounded-2xl border border-slate-800/80 overflow-hidden">
       {/* Messages Scroll Area */}
-      <div className="flex-1 p-6 overflow-y-auto space-y-6">
+      <div className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto space-y-4 sm:space-y-6">
         {messages.length === 0 && !isStreaming && (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
             <div className="p-4 rounded-2xl bg-indigo-500/10 text-indigo-400 mb-3">
@@ -175,28 +175,30 @@ export default function ChatInterface({
 
       {/* Input Prompt Box / Archived Banner */}
       {isArchived ? (
-        <div className="p-4 bg-slate-950 border-t border-slate-800/80">
-          <div className="flex items-center justify-between rounded-xl bg-amber-950/30 border border-amber-800/50 px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <Archive className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-xs text-amber-300/90">
-                This session is archived. Restore it to upload documents or ask questions.
+        <div className="p-2 sm:p-4 bg-slate-950 border-t border-slate-800/80 flex justify-center">
+          <div className="w-full max-w-sm sm:max-w-none flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-3 rounded-xl bg-amber-950/30 border border-amber-800/50 px-3.5 py-3 sm:px-4 sm:py-2.5 text-center sm:text-left">
+            <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5">
+              <div className="p-1 rounded-lg bg-amber-500/10 text-amber-400 shrink-0">
+                <Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </div>
+              <span className="text-[11px] sm:text-xs text-amber-300/90 leading-snug">
+                Session is archived. Restore to upload documents or ask questions.
               </span>
             </div>
             {onRestore && (
               <button
                 type="button"
                 onClick={onRestore}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-xs font-semibold transition shadow-sm shrink-0 ml-3"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-[11px] sm:text-xs font-semibold transition shadow-sm shrink-0"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Restore Session
+                <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <span>Restore Session</span>
               </button>
             )}
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="p-4 bg-slate-950 border-t border-slate-800/80">
+        <form onSubmit={handleSubmit} className="p-2.5 sm:p-4 bg-slate-950 border-t border-slate-800/80">
           <div className="relative flex items-center">
             <input
               ref={inputRef}
@@ -205,12 +207,12 @@ export default function ChatInterface({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={isStreaming}
-              className="w-full rounded-xl bg-slate-900 border border-slate-800 pl-4 pr-12 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition"
+              className="w-full rounded-xl bg-slate-900 border border-slate-800 pl-3.5 sm:pl-4 pr-11 sm:pr-12 py-2.5 sm:py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition"
             />
             <button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="absolute right-2 p-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-30 text-white transition shadow-md"
+              className="absolute right-1.5 sm:right-2 p-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-30 text-white transition shadow-md"
             >
               <Send className="w-3.5 h-3.5" />
             </button>

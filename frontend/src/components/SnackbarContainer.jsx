@@ -56,10 +56,13 @@ export default function SnackbarContainer() {
         return updated;
       });
 
-      // Auto dismiss after 4 seconds
+      // Shorter dismiss on mobile viewports (< 640px)
+      const isMobile = window.innerWidth < 640;
+      const dismissTime = isMobile ? 2000 : 4000;
+
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== newToast.id));
-      }, 4000);
+      }, dismissTime);
     };
 
     window.addEventListener(TOAST_EVENT, handleAddToast);
@@ -76,7 +79,7 @@ export default function SnackbarContainer() {
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="fixed top-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
+      className="fixed top-3 right-3 sm:top-5 sm:right-5 z-[9999] flex flex-col items-end gap-2 max-w-[85vw] sm:max-w-sm w-auto pointer-events-none"
     >
       {toasts.map((toast) => {
         const isSuccess = toast.type === 'success';
@@ -84,7 +87,7 @@ export default function SnackbarContainer() {
         return (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-start gap-3 p-3.5 bg-slate-900/95 border rounded-xl shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-top-3 duration-200 ${
+            className={`pointer-events-auto flex items-center sm:items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3.5 bg-slate-900/95 border rounded-xl shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-top-3 duration-200 ${
               isSuccess
                 ? 'border-emerald-500/40 shadow-emerald-500/5'
                 : 'border-rose-500/40 shadow-rose-500/5'
@@ -92,7 +95,7 @@ export default function SnackbarContainer() {
             role="alert"
           >
             <div
-              className={`p-1 rounded-lg shrink-0 mt-0.5 ${
+              className={`p-1 rounded-lg shrink-0 ${
                 isSuccess
                   ? 'bg-emerald-500/10 text-emerald-400'
                   : 'bg-rose-500/10 text-rose-400'
@@ -113,7 +116,12 @@ export default function SnackbarContainer() {
               >
                 {isSuccess ? 'Success' : 'Error'}
               </p>
-              <p className="text-xs text-slate-200 mt-0.5 leading-relaxed break-words font-medium">
+              {/* For success on mobile, hide the message and show only "Success". For errors or on desktop, show message */}
+              <p
+                className={`text-xs text-slate-200 mt-0.5 leading-relaxed break-words font-medium ${
+                  isSuccess ? 'hidden sm:block' : 'block'
+                }`}
+              >
                 {toast.message}
               </p>
             </div>

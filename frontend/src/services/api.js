@@ -245,10 +245,17 @@ export async function streamQuery(sessionId, prompt, { onToken, onCitations, onE
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const dataStr = trimmed.replace(/^data: /, '').trim();
+        if (!trimmed) continue;
+        if (!trimmed.startsWith('data:')) continue;
 
-        if (dataStr === '[DONE]') {
+        let dataStr = trimmed.replace(/^data:\s*/, '').trim();
+
+        // If dataStr itself has an extra "data:" prefix (e.g. data: data: [DONE])
+        if (dataStr.startsWith('data:')) {
+          dataStr = dataStr.replace(/^data:\s*/, '').trim();
+        }
+
+        if (dataStr === '[DONE]' || dataStr.includes('[DONE]')) {
           if (onComplete) onComplete();
           return;
         }
@@ -266,7 +273,11 @@ export async function streamQuery(sessionId, prompt, { onToken, onCitations, onE
             return;
           }
         } catch {
-          if (onToken) onToken(dataStr);
+          // If JSON parse fails, ignore control frames and never leak [DONE]
+          if (dataStr.includes('[DONE]')) {
+            if (onComplete) onComplete();
+            return;
+          }
         }
       }
     }

@@ -4,7 +4,7 @@ import SessionCard from '../components/dashboard/SessionCard';
 import CreateSessionModal from '../components/dashboard/CreateSessionModal';
 import ConfirmModal from '../components/common/ConfirmModal';
 import ErrorView from '../components/common/ErrorView';
-import { showBackendError } from '../components/SnackbarContainer';
+import { showBackendError, showBackendSuccess } from '../components/SnackbarContainer';
 import { getSessions, createSession, updateSession, deleteSession, getUser } from '../services/api';
 
 export default function DashboardPage({ onSelectSession, onLogout }) {
@@ -145,6 +145,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       const newSession = res.response || res.data;
       if (newSession) {
         setSessions((prev) => [newSession, ...prev]);
+        showBackendSuccess('Session created successfully');
         onSelectSession(newSession);
       }
     } catch (err) {
@@ -157,6 +158,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
     try {
       await updateSession(sessionId, { status: 'ARCHIVED' });
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+      showBackendSuccess('Session archived successfully');
     } catch (err) {
       showBackendError(`Failed to archive session: ${err.message}`);
     }
@@ -166,6 +168,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
     try {
       await updateSession(sessionId, { status: 'ACTIVE' });
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
+      showBackendSuccess('Session restored successfully');
     } catch (err) {
       showBackendError(`Failed to restore session: ${err.message}`);
     }
@@ -176,6 +179,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
     try {
       await deleteSession(deleteTargetSessionId);
       setSessions((prev) => prev.filter((s) => s.sessionId !== deleteTargetSessionId));
+      showBackendSuccess('Session deleted successfully');
     } catch (err) {
       showBackendError(`Failed to delete session: ${err.message}`);
     } finally {

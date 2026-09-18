@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import DashboardPage from './pages/DashboardPage';
 import SessionWorkspacePage from './pages/SessionWorkspacePage';
 import LoginPage from './pages/LoginPage';
-import SnackbarContainer from './components/SnackbarContainer';
+import SnackbarContainer, { showBackendSuccess } from './components/SnackbarContainer';
 import { getAuthToken, getUser, logout, getSessionById } from './services/api';
 
 export default function App() {
@@ -138,6 +138,7 @@ export default function App() {
 
   const handleLogout = () => {
     logout();
+    showBackendSuccess('Signed out successfully');
     setUser(null);
     setActiveSession(null);
     localStorage.removeItem('activeSessionId');

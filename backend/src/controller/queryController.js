@@ -106,7 +106,7 @@ export async function querySession(req, res) {
 
       // Send citations at end of stream
       res.write(`data: ${JSON.stringify({ type: SSE_CONFIG.EVENT_TYPES.CITATIONS, citations })}\n\n`);
-      res.write(`data: ${SSE_CONFIG.DONE_MESSAGE}\n\n`);
+      res.write(SSE_CONFIG.DONE_MESSAGE);
       res.end();
 
       // Record assistant message with citations and owner userId

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, Lock, Mail, User, AlertCircle, ArrowRight } from 'lucide-react';
 import { loginUser, signupUser } from '../services/api';
+import { showBackendSuccess } from '../components/SnackbarContainer';
 
 export default function LoginPage({ onLoginSuccess }) {
   const [isSignup, setIsSignup] = useState(false);
@@ -21,9 +22,11 @@ export default function LoginPage({ onLoginSuccess }) {
           throw new Error('Name is required');
         }
         const data = await signupUser(name, email, password);
+        showBackendSuccess('Account created successfully');
         onLoginSuccess(data.user);
       } else {
         const data = await loginUser(email, password);
+        showBackendSuccess('Signed in successfully');
         onLoginSuccess(data.user);
       }
     } catch (err) {

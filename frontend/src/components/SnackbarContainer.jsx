@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 
-const TOAST_EVENT = 'app:snackbar-error';
+const TOAST_EVENT = 'app:snackbar-message';
 
 /**
  * Dispatch a backend error toast notification.
@@ -13,6 +13,24 @@ export function showBackendError(message) {
     new CustomEvent(TOAST_EVENT, {
       detail: {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'error',
+        message,
+      },
+    })
+  );
+}
+
+/**
+ * Dispatch a success toast notification.
+ * @param {string} message - Success message to display
+ */
+export function showBackendSuccess(message) {
+  if (!message) return;
+  window.dispatchEvent(
+    new CustomEvent(TOAST_EVENT, {
+      detail: {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'success',
         message,
       },
     })
@@ -21,7 +39,7 @@ export function showBackendError(message) {
 
 /**
  * Top-right floating Snackbar Notification Container.
- * Renders maximum 3 toasts simultaneously with auto-dismiss after 5 seconds.
+ * Renders maximum 3 toasts simultaneously with auto-dismiss after 4 seconds.
  */
 export default function SnackbarContainer() {
   const [toasts, setToasts] = useState([]);
@@ -38,10 +56,10 @@ export default function SnackbarContainer() {
         return updated;
       });
 
-      // Auto dismiss after 5 seconds
+      // Auto dismiss after 4 seconds
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== newToast.id));
-      }, 5000);
+      }, 4000);
     };
 
     window.addEventListener(TOAST_EVENT, handleAddToast);
@@ -60,34 +78,56 @@ export default function SnackbarContainer() {
       aria-atomic="true"
       className="fixed top-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
     >
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className="pointer-events-auto flex items-start gap-3 p-3.5 bg-slate-900/95 border border-rose-500/40 rounded-xl shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-top-3 duration-200"
-          role="alert"
-        >
-          <div className="p-1 rounded-lg bg-rose-500/10 text-rose-400 shrink-0 mt-0.5">
-            <AlertCircle className="w-4 h-4" />
-          </div>
+      {toasts.map((toast) => {
+        const isSuccess = toast.type === 'success';
 
-          <div className="flex-1 min-w-0 pr-1">
-            <p className="text-xs font-semibold text-rose-400 tracking-wide uppercase">
-              Error
-            </p>
-            <p className="text-xs text-slate-200 mt-0.5 leading-relaxed break-words font-medium">
-              {toast.message}
-            </p>
-          </div>
-
-          <button
-            onClick={() => removeToast(toast.id)}
-            className="text-slate-400 hover:text-slate-200 p-1 rounded-md hover:bg-slate-800 transition-colors shrink-0"
-            aria-label="Dismiss error"
+        return (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto flex items-start gap-3 p-3.5 bg-slate-900/95 border rounded-xl shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-top-3 duration-200 ${
+              isSuccess
+                ? 'border-emerald-500/40 shadow-emerald-500/5'
+                : 'border-rose-500/40 shadow-rose-500/5'
+            }`}
+            role="alert"
           >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ))}
+            <div
+              className={`p-1 rounded-lg shrink-0 mt-0.5 ${
+                isSuccess
+                  ? 'bg-emerald-500/10 text-emerald-400'
+                  : 'bg-rose-500/10 text-rose-400'
+              }`}
+            >
+              {isSuccess ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <AlertCircle className="w-4 h-4" />
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0 pr-1">
+              <p
+                className={`text-xs font-semibold tracking-wide uppercase ${
+                  isSuccess ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {isSuccess ? 'Success' : 'Error'}
+              </p>
+              <p className="text-xs text-slate-200 mt-0.5 leading-relaxed break-words font-medium">
+                {toast.message}
+              </p>
+            </div>
+
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="text-slate-400 hover:text-slate-200 p-1 rounded-md hover:bg-slate-800 transition-colors shrink-0"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

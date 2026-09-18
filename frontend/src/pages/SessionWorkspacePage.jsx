@@ -7,7 +7,7 @@ import CitationDrawer from '../components/workspace/CitationDrawer';
 import ConfirmModal from '../components/common/ConfirmModal';
 import DocumentPreviewModal from '../components/workspace/DocumentPreviewModal';
 import ErrorView from '../components/common/ErrorView';
-import { showBackendError } from '../components/SnackbarContainer';
+import { showBackendError, showBackendSuccess } from '../components/SnackbarContainer';
 import {
   getSessionDocuments,
   uploadDocuments,
@@ -103,6 +103,7 @@ export default function SessionWorkspacePage({ session, onBack, onSessionUpdate 
     try {
       await deleteDocument(session.sessionId, deleteTargetDocId);
       setDocuments((prev) => prev.filter((d) => d.documentId !== deleteTargetDocId));
+      showBackendSuccess('Document deleted successfully');
     } catch (err) {
       showBackendError(`Failed to delete document: ${err.message}`);
     } finally {
@@ -145,6 +146,7 @@ export default function SessionWorkspacePage({ session, onBack, onSessionUpdate 
         )
       );
       await retryDocument(session.sessionId, docId);
+      showBackendSuccess('Document retry scheduled successfully');
     } catch (err) {
       console.error('Failed to retry document:', err);
       loadSessionData();
@@ -212,6 +214,7 @@ export default function SessionWorkspacePage({ session, onBack, onSessionUpdate 
       if (updated && onSessionUpdate) {
         onSessionUpdate(updated);
       }
+      showBackendSuccess('Session restored successfully');
     } catch (err) {
       showBackendError(`Failed to restore session: ${err.message}`);
     }

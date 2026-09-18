@@ -1,10 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Folder, MoreVertical, Archive, ArrowUpRight, Trash2, FileText, Clock, RotateCcw } from 'lucide-react';
 import { formatRelativeTime } from '../../utils/formatters';
 
 export default function SessionCard({ session, onSelect, onArchive, onRestore, onDelete }) {
   const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef(null);
   const isArchived = session.status === 'ARCHIVED';
+
+  useEffect(() => {
+    if (!showMenu) return;
+
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showMenu]);
 
   return (
     <div
@@ -29,18 +54,18 @@ export default function SessionCard({ session, onSelect, onArchive, onRestore, o
             </div>
           </div>
 
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setShowMenu(!showMenu)}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              aria-label="Session actions"
+              aria-expanded={showMenu}
             >
               <MoreVertical className="w-4 h-4" />
             </button>
 
             {showMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 w-36 z-20 rounded-xl bg-slate-950 border border-slate-800 py-1 shadow-xl text-xs">
+              <div className="absolute right-0 top-full mt-1 w-36 z-30 rounded-xl bg-slate-950 border border-slate-800 py-1 shadow-2xl text-xs">
                   {isArchived ? (
                     <button
                       onClick={() => {
@@ -75,7 +100,6 @@ export default function SessionCard({ session, onSelect, onArchive, onRestore, o
                     Delete
                   </button>
                 </div>
-              </>
             )}
           </div>
         </div>

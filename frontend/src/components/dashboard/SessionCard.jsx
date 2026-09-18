@@ -38,19 +38,26 @@ export default function SessionCard({ session, onSelect, onArchive, onRestore, o
     >
       <div>
         <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${isArchived ? 'bg-amber-500/10 text-amber-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
+          <div className="flex items-start gap-3.5 min-w-0 flex-1">
+            <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${isArchived ? 'bg-amber-500/10 text-amber-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
               <Folder className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-semibold text-slate-100 group-hover:text-indigo-300 transition line-clamp-1">
+            <div className="min-w-0 flex-1 pl-0.5">
+              <h3 className="font-semibold text-slate-100 group-hover:text-indigo-300 transition line-clamp-1 leading-snug">
                 {session.title}
               </h3>
-              <span className={`inline-flex items-center text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 mt-0.5 rounded-full ${
-                isArchived ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-              }`}>
-                {session.status || 'ACTIVE'}
-              </span>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {session.sessionId && (
+                  <span className="inline-flex items-center text-[11px] font-mono font-medium text-slate-300 bg-slate-800 border border-slate-750 px-2 py-0.5 rounded-full shadow-xs">
+                    #{session.sessionId.slice(-6)}
+                  </span>
+                )}
+                <span className={`inline-flex items-center text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full ${
+                  isArchived ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                }`}>
+                  {session.status || 'ACTIVE'}
+                </span>
+              </div>
             </div>
           </div>
 

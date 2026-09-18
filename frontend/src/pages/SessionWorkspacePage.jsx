@@ -258,7 +258,12 @@ export default function SessionWorkspacePage({ session, onBack, onSessionUpdate 
           <div className="h-4 w-px bg-slate-800" />
           <div>
             <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-              {session.title}
+              <span>{session.title}</span>
+              {session.sessionId && (
+                <span className="text-xs font-mono font-normal text-slate-400">
+                  - {session.sessionId.slice(-6)}
+                </span>
+              )}
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isArchived ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'}`}>
                 {session.status || 'ACTIVE'}
               </span>

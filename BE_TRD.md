@@ -734,7 +734,7 @@ data: [DONE]
 ## 5. Asynchronous Message Queue Contract & Worker Processing (AWS SQS)
 
 ### 5.1 Queue Topology & Polling Configuration
-- **Primary Queue**: `document_processing_queue_local`
+- **Primary Queue**: `document_processing_queue_${ENVIRONMENT}` (dead-letter queue enabled)
 - **Visibility Timeout**: 180 seconds
 - **Message Retention**: 4 days
 - **Long Polling Wait Time**: 20 seconds (`waitTimeSeconds: 20` and queue attribute `ReceiveMessageWaitTimeSeconds: 20`) to eliminate empty receive calls and conserve polling capacity.

@@ -39,17 +39,17 @@ Citation format:
 };
 
 export const GEMINI_CONFIG = {
-  DEFAULT_EMBEDDING_MODEL: 'gemini-embedding-2',
-  DEFAULT_LLM_MODEL: 'gemini-3.5-flash-lite',
+  DEFAULT_EMBEDDING_MODEL: 'gemini-embedding-001',
+  DEFAULT_LLM_MODEL: 'gemini-3.5-flash',
   EMBEDDING_CANDIDATE_MODELS: [
-    'gemini-embedding-2',
     'gemini-embedding-001',
+    'gemini-embedding-2',
     'text-embedding-004',
   ],
   LLM_CANDIDATE_MODELS: [
+    'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
     'gemini-3.6-flash',
-    'gemini-3.5-flash',
   ],
 
   SUMMARY_MAX_CHAR_LENGTH: 25000,

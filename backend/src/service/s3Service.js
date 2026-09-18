@@ -1,6 +1,6 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { AWS_CONFIG } from '../utils/constant/index.js';
+import { constant, AWS_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 's3Service';
@@ -27,7 +27,7 @@ export async function uploadToS3({ key, buffer, mimeType }) {
   logger.info('Preparing to upload object to S3', CONTEXT, SUB_CONTEXT, { bucketName, key, mimeType, byteLength: buffer?.length });
 
   // Mock code only runs when ENV === 'test'
-  if (process.env.ENV === 'test') {
+  if (process.env.ENV === constant.ENVS.TEST) {
     logger.debug('Running S3 upload in test mock mode', CONTEXT, SUB_CONTEXT, { key });
     return {
       bucket: bucketName,
@@ -68,7 +68,7 @@ export async function getPresignedDownloadUrl({
   logger.info('Generating presigned download URL', CONTEXT, SUB_CONTEXT, { bucketName, key, expiresInSeconds, fileName, asAttachment });
 
   // Mock code only runs when ENV === 'test'
-  if (process.env.ENV === 'test') {
+  if (process.env.ENV === constant.ENVS.TEST) {
     logger.debug('Returning mock presigned URL in test mode', CONTEXT, SUB_CONTEXT, { key });
     return `https://${bucketName}.s3.${region}.amazonaws.com/${key}?mockToken=true`;
   }
@@ -101,7 +101,7 @@ export async function deleteFromS3({ key }) {
   logger.info('Deleting object from S3', CONTEXT, SUB_CONTEXT, { bucketName, key });
 
   // Mock code only runs when ENV === 'test'
-  if (process.env.ENV === 'test') {
+  if (process.env.ENV === constant.ENVS.TEST) {
     logger.debug('Mock deleting S3 object in test mode', CONTEXT, SUB_CONTEXT, { key });
     return true;
   }

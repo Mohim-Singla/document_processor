@@ -20,7 +20,7 @@ export const sqsClient = {
    * Returns an SQS client instance for a given region (cached)
    */
   getInstance: (region) => {
-    const targetRegion = region || sqsClientConfig.REGION || 'ap-south-1';
+    const targetRegion = region || sqsClientConfig.REGION || AWS_CONFIG.DEFAULT_REGION;
     let instance = sqsClientInstanceMap.get(targetRegion);
     if (!instance) {
       instance = new SQSClient({

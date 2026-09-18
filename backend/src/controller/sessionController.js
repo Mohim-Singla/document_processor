@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { SESSION_STATUS } from '../utils/constant/status.js';
 import { logger } from '../utils/logger.js';
+import { HTTP_STATUS, ERROR_CODES, PAGINATION } from '../utils/constant/index.js';
 
 const CONTEXT = 'sessionController';
 
@@ -11,7 +12,7 @@ export async function listSessions(req, res) {
     const {
       status = SESSION_STATUS.ACTIVE,
       cursor = null,
-      limit = 12,
+      limit = PAGINATION.DEFAULT_LIMIT,
       search = '',
     } = req.query;
     const userId = req.user.userId;
@@ -42,11 +43,11 @@ export async function listSessions(req, res) {
         parsedCursor = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
       } catch (err) {
         logger.warn('Invalid cursor provided', CONTEXT, SUB_CONTEXT, { cursor, error: err.message });
-        return res.error('Invalid cursor format', 'BAD_REQUEST', 400);
+        return res.error('Invalid cursor format', ERROR_CODES.BAD_REQUEST, HTTP_STATUS.BAD_REQUEST);
       }
     }
 
-    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 12, 1), 50);
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || PAGINATION.DEFAULT_LIMIT, PAGINATION.MIN_LIMIT), PAGINATION.MAX_LIMIT);
 
     const result = await mongoRepositories.sessions.fetchPaginated({
       filter,
@@ -62,7 +63,7 @@ export async function listSessions(req, res) {
     return res.success('Sessions fetched successfully', result);
   } catch (error) {
     logger.error('Error fetching sessions', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to fetch sessions', error.message, 500);
+    return res.error('Failed to fetch sessions', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -78,14 +79,14 @@ export async function getSessionById(req, res) {
     const session = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!session) {
       logger.warn('Session not found or access denied', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     logger.info('Session fetched successfully', CONTEXT, SUB_CONTEXT, { sessionId: id });
     return res.success('Session fetched successfully', session);
   } catch (error) {
     logger.error('Error fetching session by id', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to fetch session', error.message, 500);
+    return res.error('Failed to fetch session', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -99,7 +100,7 @@ export async function createSession(req, res) {
 
     if (!title) {
       logger.warn('Creation failed: session title is required', CONTEXT, SUB_CONTEXT);
-      return res.error('Session title is required', 'Validation Error', 400);
+      return res.error('Session title is required', ERROR_CODES.VALIDATION_ERROR, HTTP_STATUS.BAD_REQUEST);
     }
 
     const sessionId = uuidv4();
@@ -115,10 +116,10 @@ export async function createSession(req, res) {
     });
 
     logger.info('Session created successfully', CONTEXT, SUB_CONTEXT, { sessionId, title });
-    return res.success('Session created successfully', newSession, 201);
+    return res.success('Session created successfully', newSession, HTTP_STATUS.CREATED);
   } catch (error) {
     logger.error('Error creating session', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to create session', error.message, 500);
+    return res.error('Failed to create session', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -135,7 +136,7 @@ export async function updateSession(req, res) {
     const existing = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!existing) {
       logger.warn('Session update failed: not found or unauthorized', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     const updateFields = {};
@@ -152,7 +153,7 @@ export async function updateSession(req, res) {
     return res.success('Session updated successfully', updated);
   } catch (error) {
     logger.error('Error updating session', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to update session', error.message, 500);
+    return res.error('Failed to update session', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -168,7 +169,7 @@ export async function deleteSession(req, res) {
     const session = await mongoRepositories.sessions.fetchOne({ sessionId: id, userId });
     if (!session) {
       logger.warn('Session delete failed: not found or unauthorized', CONTEXT, SUB_CONTEXT, { sessionId: id, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     // Cascade soft delete across MongoDB collections (S3 documents are kept intact)
@@ -183,7 +184,7 @@ export async function deleteSession(req, res) {
     return res.success('Session and associated documents deleted successfully');
   } catch (error) {
     logger.error('Error deleting session', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to delete session', error.message, 500);
+    return res.error('Failed to delete session', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 

@@ -8,7 +8,7 @@ let aiInstance = null;
 function getAI() {
   if (!aiInstance) {
     const apiKey = process.env.GEMINI_API_KEY || '';
-    if (!apiKey && process.env.ENV !== 'test') {
+    if (!apiKey && process.env.ENV !== constant.ENVS.TEST) {
       logger.critical('GEMINI_API_KEY is missing in environment', CONTEXT, getAI.name);
       throw new Error('GEMINI_API_KEY is missing in environment.');
     }
@@ -78,12 +78,9 @@ export async function getEmbedding(text) {
         return response.embedding.values;
       }
     } catch (err) {
-      const isCapacityError =
-        err.message?.includes('503') ||
-        err.message?.includes('high demand') ||
-        err.message?.includes('UNAVAILABLE') ||
-        err.message?.includes('429') ||
-        err.message?.includes('RESOURCE_EXHAUSTED');
+      const isCapacityError = GEMINI_CONFIG.CAPACITY_ERROR_SIGNALS.some(
+        (signal) => err.message?.includes(signal)
+      );
 
       if (isCapacityError && idx < totalCandidates - 1) {
         const nextModel = candidateModels[idx + 1];
@@ -94,7 +91,7 @@ export async function getEmbedding(text) {
           remainingAttempts: totalCandidates - attemptNum,
           error: err.message,
         });
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, GEMINI_CONFIG.CAPACITY_RETRY_DELAY_MS));
         continue;
       }
       if (idx === totalCandidates - 1) {
@@ -170,12 +167,9 @@ export async function getEmbeddingsBatch(texts) {
         return results;
       }
     } catch (err) {
-      const isCapacityError =
-        err.message?.includes('503') ||
-        err.message?.includes('high demand') ||
-        err.message?.includes('UNAVAILABLE') ||
-        err.message?.includes('429') ||
-        err.message?.includes('RESOURCE_EXHAUSTED');
+      const isCapacityError = GEMINI_CONFIG.CAPACITY_ERROR_SIGNALS.some(
+        (signal) => err.message?.includes(signal)
+      );
 
       if (isCapacityError && idx < totalCandidates - 1) {
         const nextModel = candidateModels[idx + 1];
@@ -187,7 +181,7 @@ export async function getEmbeddingsBatch(texts) {
           batchSize: texts.length,
           error: err.message,
         });
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, GEMINI_CONFIG.CAPACITY_RETRY_DELAY_MS));
         continue;
       }
       if (idx === totalCandidates - 1) {
@@ -286,7 +280,7 @@ export async function* streamRagCompletion({ prompt, contextChunks = [] }) {
   logger.info('Starting streaming RAG generation with Gemini', CONTEXT, SUB_CONTEXT, { chunkCount: contextChunks.length, promptLength: prompt.length });
 
   // Mock only runs when ENV === 'test'
-  if (process.env.ENV === 'test') {
+  if (process.env.ENV === constant.ENVS.TEST) {
     const fallbackText = `[Test Mode] Answer for: ${prompt} based on ${contextChunks.length} documents. [1]`;
     for (const word of fallbackText.split(' ')) {
       yield `${word} `;
@@ -347,12 +341,9 @@ export async function* streamRagCompletion({ prompt, contextChunks = [] }) {
       }
       break;
     } catch (err) {
-      const isCapacityError =
-        err.message?.includes('503') ||
-        err.message?.includes('high demand') ||
-        err.message?.includes('UNAVAILABLE') ||
-        err.message?.includes('429') ||
-        err.message?.includes('RESOURCE_EXHAUSTED');
+      const isCapacityError = GEMINI_CONFIG.CAPACITY_ERROR_SIGNALS.some(
+        (signal) => err.message?.includes(signal)
+      );
 
       if (isCapacityError && idx < totalCandidates - 1) {
         const nextModel = candidateModels[idx + 1];
@@ -396,7 +387,7 @@ export async function generateDocumentSummary(rawText) {
   const SUB_CONTEXT = generateDocumentSummary.name;
   if (!rawText || !rawText.trim()) return '';
 
-  if (process.env.ENV === constant.ENVS.TEST || process.env.ENV === 'test') {
+  if (process.env.ENV === constant.ENVS.TEST) {
     logger.debug('Returning test mock document summary', CONTEXT, SUB_CONTEXT);
     return 'Summary of the uploaded document based on parsed content.';
   }
@@ -442,12 +433,9 @@ export async function generateDocumentSummary(rawText) {
         return summary;
       }
     } catch (err) {
-      const isCapacityError =
-        err.message?.includes('503') ||
-        err.message?.includes('high demand') ||
-        err.message?.includes('UNAVAILABLE') ||
-        err.message?.includes('429') ||
-        err.message?.includes('RESOURCE_EXHAUSTED');
+      const isCapacityError = GEMINI_CONFIG.CAPACITY_ERROR_SIGNALS.some(
+        (signal) => err.message?.includes(signal)
+      );
 
       if (isCapacityError && idx < totalCandidates - 1) {
         const nextModel = candidateModels[idx + 1];
@@ -458,7 +446,7 @@ export async function generateDocumentSummary(rawText) {
           remainingAttempts: totalCandidates - attemptNum,
           error: err.message,
         });
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, GEMINI_CONFIG.CAPACITY_RETRY_DELAY_MS));
         continue;
       }
       logger.warn('Error generating summary with candidate', CONTEXT, SUB_CONTEXT, { candidate, error: err.message });

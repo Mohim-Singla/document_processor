@@ -1,3 +1,5 @@
+import { HTTP_STATUS } from '../utils/constant/index.js';
+
 /**
  * Wrapper function to handle successful express requests
  * @param {string} message Message to be sent to client
@@ -5,7 +7,7 @@
  * @param {number} statusCode Status code of the http request
  * @returns {Express.Response}
  */
-function successHandler(message, response, statusCode = 200) {
+function successHandler(message, response, statusCode = HTTP_STATUS.OK) {
   return this.status(statusCode).send({
     status: 'Success',
     message,
@@ -22,7 +24,7 @@ function successHandler(message, response, statusCode = 200) {
  * @param {number} errorCode Error code
  * @returns {Express.Response}
  */
-function errorHandler(message, error, statusCode = 500, errorCode = 500) {
+function errorHandler(message, error, statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR, errorCode = HTTP_STATUS.INTERNAL_SERVER_ERROR) {
   return this.status(statusCode).send({
     status: 'Success',
     message,

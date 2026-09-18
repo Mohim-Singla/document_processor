@@ -1,6 +1,6 @@
 import { constant } from '../../utils/constant/index.js';
 
-const defaultRegion = process.env.AWS_SQS_REGION_DEFAULT || process.env.AWS_REGION || 'ap-south-1';
+const defaultRegion = process.env.AWS_SQS_REGION_DEFAULT || process.env.AWS_REGION || constant.AWS_CONFIG.DEFAULT_REGION;
 const currentEnv = process.env.ENV || constant.ENVS.DEV;
 const waitTimeSeconds = Number(process.env.AWS_SQS_WAIT_TIME_SECONDS) || constant.AWS_CONFIG.DEFAULT_SQS_WAIT_TIME_SECONDS;
 const pollingWaitTimeMs = Number(process.env.AWS_SQS_POLLING_WAIT_TIME_MS) || constant.AWS_CONFIG.DEFAULT_SQS_POLLING_WAIT_TIME_MS;

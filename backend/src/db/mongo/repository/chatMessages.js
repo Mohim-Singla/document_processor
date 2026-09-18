@@ -1,10 +1,11 @@
 import { modelMap } from '../models/index.js';
+import { PAGINATION } from '../../../utils/constant/index.js';
 
 async function create(messageData) {
   return modelMap.chatMessagesModel.getModel().create({ isDeleted: false, deletedAt: null, ...messageData });
 }
 
-async function findBySession(sessionId, filter = {}, limit = 50) {
+async function findBySession(sessionId, filter = {}, limit = PAGINATION.DEFAULT_CHAT_MESSAGE_LIMIT) {
   return modelMap.chatMessagesModel.getModel()
     .find({ sessionId, isDeleted: { $ne: true }, ...filter })
     .sort({ createdAt: 1 })

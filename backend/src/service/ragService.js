@@ -76,7 +76,7 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
     return {
       ...chunk,
       score,
-      fileName: activeDocMap.get(chunk.documentId) || chunk.metadata?.fileName || 'Document',
+      fileName: activeDocMap.get(chunk.documentId) || chunk.metadata?.fileName || RAG_CONFIG.DEFAULT_DOCUMENT_NAME,
     };
   });
 
@@ -94,7 +94,7 @@ export async function retrieveRelevantChunks({ sessionId, userId, query, topK = 
 
   // If no chunks pass the strict threshold, fallback to highest scoring chunks above fallback score
   if (selected.length === 0 && scoredChunks.length > 0) {
-    selected = scoredChunks.filter((c) => c.score >= RAG_CONFIG.DEFAULT_FALLBACK_SCORE).slice(0, Math.min(3, topK));
+    selected = scoredChunks.filter((c) => c.score >= RAG_CONFIG.DEFAULT_FALLBACK_SCORE).slice(0, Math.min(RAG_CONFIG.FALLBACK_TOP_K, topK));
   }
 
   logger.info('Relevant chunks scored and filtered', CONTEXT, SUB_CONTEXT, {

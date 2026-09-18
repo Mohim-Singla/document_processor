@@ -1,4 +1,5 @@
 import { modelMap } from '../models/index.js';
+import { PAGINATION } from '../../../utils/constant/index.js';
 
 async function fetchOne(filter) {
   return modelMap.sessionsModel.getModel().findOne({ isDeleted: { $ne: true }, ...filter }).lean();
@@ -8,7 +9,7 @@ async function fetchAll(filter = {}, sort = { updatedAt: -1 }) {
   return modelMap.sessionsModel.getModel().find({ isDeleted: { $ne: true }, ...filter }).sort(sort).lean();
 }
 
-async function fetchPaginated({ filter = {}, cursor = null, limit = 12 }) {
+async function fetchPaginated({ filter = {}, cursor = null, limit = PAGINATION.DEFAULT_LIMIT }) {
   const query = { isDeleted: { $ne: true }, ...filter };
 
   if (cursor) {

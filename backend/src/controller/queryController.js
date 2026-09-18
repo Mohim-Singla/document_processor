@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { ragService } from '../service/ragService.js';
 import { geminiService } from '../service/geminiService.js';
-import { MESSAGE_SENDER } from '../utils/constant/status.js';
+import { MESSAGE_SENDER, HTTP_STATUS, ERROR_CODES, RAG_CONFIG, SSE_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'queryController';
@@ -18,14 +18,14 @@ export async function querySession(req, res) {
 
     if (!prompt) {
       logger.warn('Query failed: Prompt is required', CONTEXT, SUB_CONTEXT);
-      return res.error('Prompt is required', 'Validation Error', 400);
+      return res.error('Prompt is required', ERROR_CODES.VALIDATION_ERROR, HTTP_STATUS.BAD_REQUEST);
     }
 
     // IDOR Check: Ensure session belongs to this user
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
       logger.warn('Session query rejected: unauthorized or not found', CONTEXT, SUB_CONTEXT, { sessionId, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     // 1. Retrieve top matching chunks from MongoDB scoped strictly by userId
@@ -34,7 +34,7 @@ export async function querySession(req, res) {
       sessionId,
       userId,
       query: prompt,
-      topK: 5,
+      topK: RAG_CONFIG.DEFAULT_TOP_K,
     });
 
     logger.info('Found relevant chunks for context', CONTEXT, SUB_CONTEXT, { chunkCount: relevantChunks.length });
@@ -70,18 +70,18 @@ export async function querySession(req, res) {
 
       return usedChunks.map((c) => ({
         documentId: c.documentId,
-        fileName: c.fileName || 'Document',
+        fileName: c.fileName || RAG_CONFIG.DEFAULT_DOCUMENT_NAME,
         pageNumber: c.pageNumber || 1,
-        snippet: c.content.slice(0, 300),
+        snippet: c.content.slice(0, RAG_CONFIG.SNIPPET_MAX_LENGTH),
         score: c.score,
       }));
     };
 
     // 2. Handle streaming response
     if (stream) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Content-Type', SSE_CONFIG.HEADERS.CONTENT_TYPE);
+      res.setHeader('Cache-Control', SSE_CONFIG.HEADERS.CACHE_CONTROL);
+      res.setHeader('Connection', SSE_CONFIG.HEADERS.CONNECTION);
 
       let fullAssistantReply = '';
 
@@ -93,14 +93,14 @@ export async function querySession(req, res) {
 
       for await (const token of generator) {
         fullAssistantReply += token;
-        res.write(`data: ${JSON.stringify({ type: 'token', content: token })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: SSE_CONFIG.EVENT_TYPES.TOKEN, content: token })}\n\n`);
       }
 
       const citations = extractUsedCitations(fullAssistantReply);
 
       // Send citations at end of stream
-      res.write(`data: ${JSON.stringify({ type: 'citations', citations })}\n\n`);
-      res.write('data: [DONE]\n\n');
+      res.write(`data: ${JSON.stringify({ type: SSE_CONFIG.EVENT_TYPES.CITATIONS, citations })}\n\n`);
+      res.write(`data: ${SSE_CONFIG.DONE_MESSAGE}\n\n`);
       res.end();
 
       // Record assistant message with citations and owner userId
@@ -162,9 +162,9 @@ export async function querySession(req, res) {
     }
 
     if (!res.headersSent) {
-      return res.error(userFriendlyMessage, 'QUERY_ERROR', 500);
+      return res.error(userFriendlyMessage, ERROR_CODES.QUERY_ERROR, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
-    res.write(`data: ${JSON.stringify({ type: 'error', message: userFriendlyMessage })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: SSE_CONFIG.EVENT_TYPES.ERROR, message: userFriendlyMessage })}\n\n`);
     res.end();
   }
 }
@@ -181,7 +181,7 @@ export async function getMessages(req, res) {
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
       logger.warn('Get messages rejected: unauthorized or not found', CONTEXT, SUB_CONTEXT, { sessionId, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     const messages = await mongoRepositories.chatMessages.findBySession(sessionId, { userId });
@@ -189,7 +189,7 @@ export async function getMessages(req, res) {
     return res.success('Messages retrieved successfully', messages);
   } catch (error) {
     logger.error('Error fetching messages', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to fetch messages', error.message, 500);
+    return res.error('Failed to fetch messages', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 

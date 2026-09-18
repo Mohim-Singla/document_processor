@@ -4,7 +4,7 @@ import { s3Service } from '../service/s3Service.js';
 import { parsingService } from '../service/parsingService.js';
 import { geminiService } from '../service/geminiService.js';
 import { sqsProducer } from '../sqs/producer/index.js';
-import { DOCUMENT_STATUS } from '../utils/constant/status.js';
+import { DOCUMENT_STATUS, HTTP_STATUS, ERROR_CODES, TEXT_FILE_EXTENSIONS, TEXT_MIME_TYPES, PREVIEW_LIMITS } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'documentController';
@@ -31,7 +31,7 @@ export async function listDocuments(req, res) {
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
       logger.warn('Session not found or unauthorized for document list', CONTEXT, SUB_CONTEXT, { sessionId, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     const documents = await mongoRepositories.documents.fetchAll({ sessionId, userId });
@@ -39,7 +39,7 @@ export async function listDocuments(req, res) {
     return res.success('Documents fetched successfully', sanitizeDocument(documents));
   } catch (error) {
     logger.error('Error fetching documents', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to fetch documents', error.message, 500);
+    return res.error('Failed to fetch documents', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -54,14 +54,14 @@ export async function uploadDocuments(req, res) {
 
     if (files.length === 0) {
       logger.warn('Document upload failed: No files provided', CONTEXT, SUB_CONTEXT);
-      return res.error('No files uploaded', 'Validation Error', 400);
+      return res.error('No files uploaded', ERROR_CODES.VALIDATION_ERROR, HTTP_STATUS.BAD_REQUEST);
     }
 
     // IDOR Check: Ensure target session belongs to the user
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
       logger.warn('Session not found or unauthorized for document upload', CONTEXT, SUB_CONTEXT, { sessionId, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     const createdDocs = [];
@@ -166,23 +166,21 @@ export async function uploadDocuments(req, res) {
       }
     }
 
-    return res.success('Documents uploaded and processing started', sanitizeDocument(createdDocs), 202);
+    return res.success('Documents uploaded and processing started', sanitizeDocument(createdDocs), HTTP_STATUS.ACCEPTED);
   } catch (error) {
     logger.error('Error uploading documents', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to upload documents', error.message, 500);
+    return res.error('Failed to upload documents', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'csv', 'tsv', 'json', 'md', 'markdown', 'log', 'xml', 'yaml', 'yml', 'sql', 'html', 'htm', 'css', 'js', 'jsx', 'ts', 'tsx', 'env', 'sh', 'py',
-]);
-
 function isTextFile(fileName, mimeType) {
-  if (mimeType && (mimeType.startsWith('text/') || mimeType === 'application/json' || mimeType === 'application/xml' || mimeType === 'application/x-yaml' || mimeType === 'application/javascript')) {
-    return true;
+  if (mimeType) {
+    for (const prefix of TEXT_MIME_TYPES) {
+      if (mimeType.startsWith(prefix) || mimeType === prefix) return true;
+    }
   }
   const ext = fileName?.split('.').pop()?.toLowerCase();
-  return ext ? TEXT_EXTENSIONS.has(ext) : false;
+  return ext ? TEXT_FILE_EXTENSIONS.has(ext) : false;
 }
 
 export async function getPreviewUrl(req, res) {
@@ -198,7 +196,7 @@ export async function getPreviewUrl(req, res) {
       const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
       if (!session) {
         logger.warn('Parent session not found or unauthorized for preview', CONTEXT, SUB_CONTEXT, { sessionId, userId });
-        return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+        return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
       }
     }
 
@@ -209,7 +207,7 @@ export async function getPreviewUrl(req, res) {
 
     if (!document) {
       logger.warn('Document not found or unauthorized for preview', CONTEXT, SUB_CONTEXT, { docId, userId });
-      return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Document not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     const [url, downloadUrl] = await Promise.all([
@@ -224,7 +222,7 @@ export async function getPreviewUrl(req, res) {
     const isText = isTextFile(document.fileName, document.mimeType);
     let previewText = null;
     let isTruncated = false;
-    const MAX_PREVIEW_BYTES = 250 * 1024; // 250 KB
+    const MAX_PREVIEW_BYTES = PREVIEW_LIMITS.MAX_PREVIEW_BYTES; // 250 KB
 
     if (isText) {
       const isLarge = document.fileSize && document.fileSize > MAX_PREVIEW_BYTES;
@@ -256,7 +254,7 @@ export async function getPreviewUrl(req, res) {
     });
   } catch (error) {
     logger.error('Error getting preview URL', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to generate preview URL', error.message, 500);
+    return res.error('Failed to generate preview URL', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -272,7 +270,7 @@ export async function deleteDocument(req, res) {
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
       logger.warn('Parent session not found or unauthorized for document delete', CONTEXT, SUB_CONTEXT, { sessionId, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     // IDOR Check: Ensure document belongs to this user and session and is not already deleted
@@ -280,7 +278,7 @@ export async function deleteDocument(req, res) {
 
     if (!document) {
       logger.warn('Document not found or unauthorized for deletion', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
-      return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Document not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     // Soft delete document and its chunks (S3 file remains intact)
@@ -292,7 +290,7 @@ export async function deleteDocument(req, res) {
     return res.success('Document deleted successfully');
   } catch (error) {
     logger.error('Error deleting document', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to delete document', error.message, 500);
+    return res.error('Failed to delete document', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -308,7 +306,7 @@ export async function retryDocument(req, res) {
     const session = await mongoRepositories.sessions.fetchOne({ sessionId, userId });
     if (!session) {
       logger.warn('Parent session not found or unauthorized for document retry', CONTEXT, SUB_CONTEXT, { sessionId, userId });
-      return res.error('Session not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     // IDOR Check: Ensure document belongs to this user and session
@@ -316,7 +314,7 @@ export async function retryDocument(req, res) {
 
     if (!document) {
       logger.warn('Document not found or unauthorized for retry', CONTEXT, SUB_CONTEXT, { sessionId, docId, userId });
-      return res.error('Document not found or unauthorized', 'FORBIDDEN', 404);
+      return res.error('Document not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
     }
 
     // Clean up any previously stored chunks from prior failed attempt
@@ -404,10 +402,10 @@ export async function retryDocument(req, res) {
       })();
     }
 
-    return res.success('Document retry scheduled successfully', sanitizeDocument(updatedDoc), 200);
+    return res.success('Document retry scheduled successfully', sanitizeDocument(updatedDoc), HTTP_STATUS.OK);
   } catch (error) {
     logger.error('Error retrying document', CONTEXT, SUB_CONTEXT, { error: error.message });
-    return res.error('Failed to retry document', error.message, 500);
+    return res.error('Failed to retry document', error.message, HTTP_STATUS.INTERNAL_SERVER_ERROR);
   }
 }
 

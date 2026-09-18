@@ -1,3 +1,5 @@
+import { HTTP_STATUS } from '../utils/constant/index.js';
+
 /**
  * Middleware to validate request body and headers against provided Joi schemas.
  * @function validateRequest
@@ -25,7 +27,7 @@ export const validateRequest = (bodySchema, headersSchema) => (req, res, next) =
 
   // Return validation errors if any
   if (errors.length) {
-    return res.error('Invalid request.', errors, 400, 400);
+    return res.error('Invalid request.', errors, HTTP_STATUS.BAD_REQUEST, HTTP_STATUS.BAD_REQUEST);
   }
 
   // Proceed to the next middleware if validation passes

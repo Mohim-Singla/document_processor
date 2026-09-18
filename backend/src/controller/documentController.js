@@ -4,7 +4,7 @@ import { s3Service } from '../service/s3Service.js';
 import { parsingService } from '../service/parsingService.js';
 import { geminiService } from '../service/geminiService.js';
 import { sqsProducer } from '../sqs/producer/index.js';
-import { DOCUMENT_STATUS, HTTP_STATUS, ERROR_CODES, TEXT_FILE_EXTENSIONS, TEXT_MIME_TYPES, PREVIEW_LIMITS } from '../utils/constant/index.js';
+import { DOCUMENT_STATUS, SESSION_STATUS, HTTP_STATUS, ERROR_CODES, TEXT_FILE_EXTENSIONS, TEXT_MIME_TYPES, PREVIEW_LIMITS } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'documentController';
@@ -62,6 +62,12 @@ export async function uploadDocuments(req, res) {
     if (!session) {
       logger.warn('Session not found or unauthorized for document upload', CONTEXT, SUB_CONTEXT, { sessionId, userId });
       return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Archive guard: Block uploads on archived sessions
+    if (session.status === SESSION_STATUS.ARCHIVED) {
+      logger.warn('Document upload blocked on archived session', CONTEXT, SUB_CONTEXT, { sessionId, userId });
+      return res.error('This session is archived. Restore it to upload documents.', ERROR_CODES.SESSION_ARCHIVED, HTTP_STATUS.FORBIDDEN);
     }
 
     const createdDocs = [];
@@ -307,6 +313,12 @@ export async function retryDocument(req, res) {
     if (!session) {
       logger.warn('Parent session not found or unauthorized for document retry', CONTEXT, SUB_CONTEXT, { sessionId, userId });
       return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Archive guard: Block document retry on archived sessions
+    if (session.status === SESSION_STATUS.ARCHIVED) {
+      logger.warn('Document retry blocked on archived session', CONTEXT, SUB_CONTEXT, { sessionId, userId });
+      return res.error('This session is archived. Restore it to retry documents.', ERROR_CODES.SESSION_ARCHIVED, HTTP_STATUS.FORBIDDEN);
     }
 
     // IDOR Check: Ensure document belongs to this user and session

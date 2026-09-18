@@ -88,7 +88,11 @@ journey
   - Last activity and updated timestamp
   - Quick action menu for archiving, restoring, or deleting
 - **Workspace Creation**: A modal dialog allowing users to name a new workspace and add an optional description.
-- **Archive & Restore**: Users can archive inactive workspaces to declutter their dashboard, with the ability to restore them at any time.
+- **Archive & Restore**: Users can archive inactive workspaces to declutter their dashboard, with the ability to restore them at any time (from the dashboard card or directly within the workspace).
+- **Archived Workspace Read-Only Enforcement**:
+  - When accessing an archived workspace, the workspace operates in read-only mode: document uploads, document retries, and conversational query options are disabled.
+  - Document viewing, downloading original files, inspecting citations, message history review, and document deletion remain accessible.
+  - In the chat area, the typing prompt box is replaced with an informative banner indicating that the session is archived, accompanied by a direct "Restore Session" action button to reactivate the workspace.
 - **Workspace Deletion**: Users can delete a workspace via a styled in-app confirmation dialog. Deleting a workspace removes it and its documents from active search without affecting cloud backups.
 - **Seamless State Resume**: When a user selects a workspace, the workspace ID is reflected in the URL. If the user refreshes their browser or shares their own workspace URL across tabs, the workspace is immediately restored without returning to the dashboard.
 

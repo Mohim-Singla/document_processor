@@ -571,6 +571,7 @@ Authorization: Bearer <signed_jwt_token>
 ```
 - **Error Responses**:
   - `400 Bad Request` (`errorCode: "Validation Error"`): No files uploaded, batch count exceeded, or invalid file format.
+  - `403 Forbidden` (`errorCode: "SESSION_ARCHIVED"`): Session is archived; document uploads are blocked until restored.
   - `413 Payload Too Large`: Uploaded file exceeds configured file size limit (initial default: 10 MB).
 
 #### 11. Document Preview & Presigned URL (`GET /v1/sessions/:id/documents/:docId/preview`)
@@ -616,6 +617,9 @@ Authorization: Bearer <signed_jwt_token>
   }
 }
 ```
+- **Error Responses**:
+  - `403 Forbidden` (`errorCode: "SESSION_ARCHIVED"`): Session is archived; document retry is blocked until restored.
+  - `404 Not Found` (`errorCode: "FORBIDDEN"`): Document or session not found or unauthorized.
 
 #### 13. Delete Document (`DELETE /v1/sessions/:id/documents/:docId`)
 - **Access**: Authenticated (`authenticateToken`)
@@ -686,6 +690,10 @@ data: [DONE]
   }
 }
 ```
+- **Error Responses**:
+  - `400 Bad Request` (`errorCode: "Validation Error"`): Prompt missing or blank.
+  - `403 Forbidden` (`errorCode: "SESSION_ARCHIVED"`): Session is archived; conversational queries are blocked until restored.
+  - `404 Not Found` (`errorCode: "FORBIDDEN"`): Session not found or unauthorized.
 
 #### 15. Message History (`GET /v1/sessions/:id/messages`)
 - **Access**: Authenticated (`authenticateToken`)
@@ -834,6 +842,23 @@ Every repository query enforces ownership through compound criteria:
 - **Message Queries**: `{ sessionId: req.params.id, userId: req.user.userId, isDeleted: false }`
 
 If a user attempts to access or mutate an ID belonging to another user, the query resolves to `null`, and the API returns a `404 Not Found` / `403 Forbidden` envelope, preventing enumeration and data exposure.
+
+### 7.3 Archived Session Read-Only Enforcement
+When a session is marked as `ARCHIVED` (`session.status === 'ARCHIVED'`), the backend enforces strict read-only guarantees on mutating operations:
+- **Blocked Actions**:
+  - `POST /v1/sessions/:id/documents` (upload documents)
+  - `POST /v1/sessions/:id/documents/:docId/retry` (retry failed ingestion)
+  - `POST /v1/sessions/:id/query` (natural language RAG queries)
+  - Attempting any of these returns `403 Forbidden` with `errorCode: "SESSION_ARCHIVED"`.
+- **Allowed Actions**:
+  - Reading metadata (`GET /v1/sessions/:id`)
+  - Listing documents (`GET /v1/sessions/:id/documents`)
+  - Document previews and downloads (`GET /v1/sessions/:id/documents/:docId/preview`)
+  - Deleting documents (`DELETE /v1/sessions/:id/documents/:docId`)
+  - Viewing message history (`GET /v1/sessions/:id/messages`)
+  - Restoring the session (`PATCH /v1/sessions/:id` with `{ status: "ACTIVE" }`)
+  - Deleting the session (`DELETE /v1/sessions/:id`)
+- **Zero-Redundancy Implementation**: Checks are evaluated directly after the tenant-scoping fetch in each controller (`uploadDocuments`, `retryDocument`, `querySession`), preventing redundant database lookups.
 
 ---
 

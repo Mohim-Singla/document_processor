@@ -105,6 +105,7 @@ graph TD
   - Hosts the left-hand document sidebar and the central conversational chat panel.
   - Manages real-time polling for in-flight document processing jobs.
   - Coordinates the slide-over citation inspection drawer and document preview modals.
+  - Detects archived state (`session.status === 'ARCHIVED'`) to enforce read-only presentation: hides the document upload dropzone, disables retry controls, styles the status pill with an amber tone, and coordinates in-workspace session restoration via `onSessionUpdate`.
 
 #### 5. Document Dropzone (`src/components/workspace/DocumentDropzone.jsx`)
 - **Role**: Drag-and-drop file ingestion zone.
@@ -112,13 +113,14 @@ graph TD
   - Enforces client-side validation using configurable thresholds (initial defaults: max 10 MB per file, max 10 files per batch) along with allowed MIME types (PDF, DOCX, TXT, common image formats).
   - Displays visual validation alerts when limits or file types are violated.
   - Emits selected files to the parent upload handler with instant visual drop feedback.
+  - Automatically hidden in archived workspaces to prevent file uploads.
 
 #### 6. Document List Item (`src/components/workspace/DocumentListItem.jsx`)
 - **Role**: Displays individual file metadata and ingestion status.
 - **Key Responsibilities**:
   - Renders document title, size, page count, and status badge (`Queued`, `Processing`, `Ready`, `Failed`).
   - Displays animated spinners during active parsing and embedding.
-  - Provides actions to preview content, download original files, retry failed processing, or trigger deletion.
+  - Provides actions to preview content, download original files, retry failed processing, or trigger deletion (in archived sessions, retry is disabled while preview, download, and deletion remain active).
 
 #### 7. Chat Interface (`src/components/workspace/ChatInterface.jsx`)
 - **Role**: Conversational interaction area for natural language queries.
@@ -128,6 +130,7 @@ graph TD
   - Parses and renders Markdown structures (tables, code blocks, bullet lists).
   - Renders interactive citation chips that trigger the citation drawer upon click.
   - Provides a prompt retry button for interrupted or failed queries.
+  - Enforces archived state behavior: replaces the prompt input box with an amber archived banner ("This session is archived. Restore it to upload documents or ask questions.") featuring a direct "Restore Session" action button, and suppresses keyboard auto-focus shortcuts when archived.
 
 #### 8. Citation Drawer (`src/components/workspace/CitationDrawer.jsx`)
 - **Role**: Slide-over panel for verifying AI response grounds.

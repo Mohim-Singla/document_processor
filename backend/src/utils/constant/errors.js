@@ -20,4 +20,5 @@ export const ERROR_CODES = {
 
   // Query
   QUERY_ERROR: 'QUERY_ERROR',
+  SESSION_ARCHIVED: 'SESSION_ARCHIVED',
 };

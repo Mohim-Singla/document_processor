@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, AlertCircle, Quote, RotateCw } from 'lucide-react';
+import { Send, Bot, User, Sparkles, AlertCircle, Quote, RotateCw, Archive, RotateCcw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -10,6 +10,8 @@ export default function ChatInterface({
   isStreaming,
   currentStreamText,
   onSelectCitation,
+  isArchived = false,
+  onRestore,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -32,13 +34,16 @@ export default function ChatInterface({
       // Skip if streaming (input is disabled)
       if (isStreaming) return;
 
+      // Skip if session is archived (no input to focus)
+      if (isArchived) return;
+
       // Focus the input — the browser will naturally insert the typed character
       inputRef.current?.focus();
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isStreaming]);
+  }, [isStreaming, isArchived]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -168,27 +173,50 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Prompt Box */}
-      <form onSubmit={handleSubmit} className="p-4 bg-slate-950 border-t border-slate-800/80">
-        <div className="relative flex items-center">
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Ask a question about the uploaded documents in this session..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={isStreaming}
-            className="w-full rounded-xl bg-slate-900 border border-slate-800 pl-4 pr-12 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isStreaming}
-            className="absolute right-2 p-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-30 text-white transition shadow-md"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
+      {/* Input Prompt Box / Archived Banner */}
+      {isArchived ? (
+        <div className="p-4 bg-slate-950 border-t border-slate-800/80">
+          <div className="flex items-center justify-between rounded-xl bg-amber-950/30 border border-amber-800/50 px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <Archive className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="text-xs text-amber-300/90">
+                This session is archived. Restore it to upload documents or ask questions.
+              </span>
+            </div>
+            {onRestore && (
+              <button
+                type="button"
+                onClick={onRestore}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-xs font-semibold transition shadow-sm shrink-0 ml-3"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Restore Session
+              </button>
+            )}
+          </div>
         </div>
-      </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="p-4 bg-slate-950 border-t border-slate-800/80">
+          <div className="relative flex items-center">
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Ask a question about the uploaded documents in this session..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={isStreaming}
+              className="w-full rounded-xl bg-slate-900 border border-slate-800 pl-4 pr-12 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition"
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || isStreaming}
+              className="absolute right-2 p-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-30 text-white transition shadow-md"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

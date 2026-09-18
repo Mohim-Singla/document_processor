@@ -144,6 +144,10 @@ export default function App() {
     window.history.replaceState({}, '', '/login');
   };
 
+  const handleSessionUpdate = (updatedSession) => {
+    setActiveSession(updatedSession);
+  };
+
   return (
     <>
       <SnackbarContainer />
@@ -159,6 +163,7 @@ export default function App() {
             <SessionWorkspacePage
               session={activeSession}
               onBack={handleBackToDashboard}
+              onSessionUpdate={handleSessionUpdate}
             />
           ) : (
             <DashboardPage

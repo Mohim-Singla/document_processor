@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import DocumentDropzone from '../components/workspace/DocumentDropzone';
 import DocumentListItem from '../components/workspace/DocumentListItem';
@@ -16,9 +16,11 @@ import {
   deleteDocument,
   getSessionMessages,
   streamQuery,
+  updateSession,
 } from '../services/api';
 
-export default function SessionWorkspacePage({ session, onBack }) {
+export default function SessionWorkspacePage({ session, onBack, onSessionUpdate }) {
+  const isArchived = session?.status === 'ARCHIVED';
   const [documents, setDocuments] = useState([]);
   const [messages, setMessages] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -203,6 +205,18 @@ export default function SessionWorkspacePage({ session, onBack }) {
     setIsDrawerOpen(true);
   };
 
+  const handleRestore = useCallback(async () => {
+    try {
+      const res = await updateSession(session.sessionId, { status: 'ACTIVE' });
+      const updated = res.response || res.data;
+      if (updated && onSessionUpdate) {
+        onSessionUpdate(updated);
+      }
+    } catch (err) {
+      showBackendError(`Failed to restore session: ${err.message}`);
+    }
+  }, [session.sessionId, onSessionUpdate]);
+
   if (!session) {
     return (
       <ErrorView
@@ -242,7 +256,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
           <div>
             <h2 className="text-sm font-semibold text-white flex items-center gap-2">
               {session.title}
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isArchived ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'}`}>
                 {session.status || 'ACTIVE'}
               </span>
             </h2>
@@ -265,12 +279,14 @@ export default function SessionWorkspacePage({ session, onBack }) {
         {/* Left Documents Sidebar */}
         <aside className="w-84 xl:w-92 border-r border-slate-800/80 p-5 flex flex-col justify-between bg-slate-900/30 overflow-y-auto shrink-0">
           <div className="space-y-5">
-            <div>
-              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
-                Upload Documents
-              </h3>
-              <DocumentDropzone onUpload={handleUpload} isUploading={isUploading} />
-            </div>
+            {!isArchived && (
+              <div>
+                <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
+                  Upload Documents
+                </h3>
+                <DocumentDropzone onUpload={handleUpload} isUploading={isUploading} />
+              </div>
+            )}
 
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -295,7 +311,7 @@ export default function SessionWorkspacePage({ session, onBack }) {
                       doc={doc}
                       onPreview={() => handlePreviewDoc(doc)}
                       onDelete={(docId) => setDeleteTargetDocId(docId)}
-                      onRetry={handleRetryDoc}
+                      onRetry={isArchived ? null : handleRetryDoc}
                     />
                   ))
                 )}
@@ -308,11 +324,13 @@ export default function SessionWorkspacePage({ session, onBack }) {
         <main className="flex-1 p-6 overflow-hidden">
           <ChatInterface
             messages={messages}
-            onSendMessage={handleSendMessage}
-            onRetry={handleRetryLast}
+            onSendMessage={isArchived ? null : handleSendMessage}
+            onRetry={isArchived ? null : handleRetryLast}
             isStreaming={isStreaming}
             currentStreamText={currentStreamText}
             onSelectCitation={handleSelectCitation}
+            isArchived={isArchived}
+            onRestore={handleRestore}
           />
         </main>
       </div>

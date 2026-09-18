@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { ragService } from '../service/ragService.js';
 import { geminiService } from '../service/geminiService.js';
-import { MESSAGE_SENDER, HTTP_STATUS, ERROR_CODES, RAG_CONFIG, SSE_CONFIG } from '../utils/constant/index.js';
+import { MESSAGE_SENDER, SESSION_STATUS, HTTP_STATUS, ERROR_CODES, RAG_CONFIG, SSE_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'queryController';
@@ -26,6 +26,12 @@ export async function querySession(req, res) {
     if (!session) {
       logger.warn('Session query rejected: unauthorized or not found', CONTEXT, SUB_CONTEXT, { sessionId, userId });
       return res.error('Session not found or unauthorized', ERROR_CODES.FORBIDDEN, HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Archive guard: Block queries on archived sessions
+    if (session.status === SESSION_STATUS.ARCHIVED) {
+      logger.warn('Query blocked on archived session', CONTEXT, SUB_CONTEXT, { sessionId, userId });
+      return res.error('This session is archived. Restore it to ask questions.', ERROR_CODES.SESSION_ARCHIVED, HTTP_STATUS.FORBIDDEN);
     }
 
     // 1. Retrieve top matching chunks from MongoDB scoped strictly by userId

@@ -123,7 +123,9 @@ journey
 ### 5.4 Conversational Q&A & Document Intelligence
 - **Natural Language Chat**: A conversational input field where users can ask questions in plain language regarding any or all documents in the active workspace.
 - **Real-Time Streaming Responses**: Answers appear progressively with a responsive streaming animation as they are generated.
-- **Multi-Document Synthesis**: The system answers questions by synthesizing information across multiple documents within the workspace.
+- **Multi-Document Synthesis**: The system answers questions by synthesizing information across multiple documents within the workspace using contextual embeddings (where document-level summaries ground segmented chunk vectors).
+- **Multi-Turn Conversational Memory**:
+  - The query engine retains a sliding context window of past messages (configurable default: 6 messages), allowing users to ask natural follow-up questions without re-explaining context.
 - **Inline Source Citations**:
   - Generated answers include numbered citation chips (e.g., `[1] Contract.pdf (p. 4)`).
   - Clicking any citation chip opens a slide-over inspection drawer.

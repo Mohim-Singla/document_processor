@@ -25,6 +25,7 @@ It captures the actual calls made under ambiguity and time constraints, the alte
 15. [Queue Polling: SQS Long Polling (20s) vs. Short Polling](#15-queue-polling-sqs-long-polling-20s-vs-short-polling)
 16. [UX Resilience & Inspection: In-Window Document Preview & Failed Document Retry](#16-ux-resilience--inspection-in-window-document-preview--failed-document-retry)
 17. [UX Ergonomics: Auto-Focus Chat Input on Natural Typing](#17-ux-ergonomics-auto-focus-chat-input-on-natural-typing)
+18. [Contextual Retrieval & Conversational Memory: Summary in Embeddings & Sliding Chat Window](#18-contextual-retrieval--conversational-memory-summary-in-embeddings--sliding-chat-window)
 
 ---
 
@@ -479,5 +480,25 @@ When a valid printable character (`e.key.length === 1`) is pressed, focus is ins
 ### Intentional Decisions
 - Implementing a separate command palette modal (`Cmd+K`): natural ambient typing focus felt more intuitive for a conversational interface and required zero cognitive overhead or shortcut memorization.
 - Forcing synthetic focus trapping / modal focus locks: would have created accessibility conflicts with screen readers and keyboard tab navigation.
+
+---
+
+## 18. Contextual Retrieval & Conversational Memory: Summary in Embeddings & Sliding Chat Window
+
+### The Decision
+1. **Contextual Retrieval (Summary in Embeddings)**: Document ingestion was updated so the document-level summary (`generateDocumentSummary(rawText)`) is generated first. When computing vector embeddings for chunks, each chunk's embedding input is contextualized with the document name and executive summary (`Document: <fileName>\nSummary: <summary>\n\nContent:\n<chunk.content>`). The clean, original chunk content is preserved in MongoDB for citations and UI rendering.
+2. **Conversational Memory Window**: Chat query completions include a sliding window of the past 4–6 messages (`CHAT_HISTORY_MESSAGE_LIMIT: 6`, configurable in `GEMINI_CONFIG`) fetched via `findRecentBySession`. These prior dialogue turns are passed into the LLM prompt alongside the retrieved document chunks.
+
+### The Alternatives
+1. **Isolated chunk embeddings without summary context**: Computing embeddings solely on raw chunk text without document-level domain knowledge.
+2. **Stateless single-turn chat**: Treating every user question independently without passing prior turns, forcing users to re-state context or document names in follow-up queries.
+3. **Full unbounded conversation history**: Passing every single message from the session into the LLM context.
+
+### The Reasoning
+* **Why Contextual Embeddings**: Standard chunking isolates paragraphs from their broader document context. A chunk describing financial figures or contract clauses often omits the company name or document purpose mentioned on page 1. Prepending the document summary and file name to the text passed to `embedContent` gives each vector embedding global semantic grounding. Cosine similarity retrieval can now surface relevant excerpts even when the chunk itself doesn't contain all document-level keywords.
+* **Why Sliding Chat Window (4–6 messages)**: Natural human conversation relies on follow-up questions (e.g. *"What about the second one?"*, *"Can you explain that in more detail?"*). Without recent context, the LLM cannot resolve pronouns or references to prior answers. Passing the last 6 messages provides conversational continuity while avoiding token bloat, latency degradation, and attention dilution.
+
+**Tradeoffs accepted:** Ingestion pipeline runs sequentially (summary first, then chunk embeddings) rather than fully in parallel, adding 1–2 seconds to the ingestion worker job in exchange for significantly higher vector retrieval accuracy.
+
 
 

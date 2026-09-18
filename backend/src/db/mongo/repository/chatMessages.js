@@ -20,6 +20,15 @@ async function findLastBySession(sessionId, filter = {}) {
     .lean();
 }
 
+async function findRecentBySession(sessionId, filter = {}, limit = 6) {
+  const messages = await modelMap.chatMessagesModel.getModel()
+    .find({ sessionId, isDeleted: { $ne: true }, ...filter })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+  return messages.reverse();
+}
+
 async function softDeleteBySession(sessionId, filter = {}) {
   return modelMap.chatMessagesModel.getModel().updateMany(
     { sessionId, isDeleted: { $ne: true }, ...filter },
@@ -35,6 +44,7 @@ export const chatMessages = {
   create,
   findBySession,
   findLastBySession,
+  findRecentBySession,
   softDeleteBySession,
   deleteBySession,
 };

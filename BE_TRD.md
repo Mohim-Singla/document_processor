@@ -778,13 +778,10 @@ sequenceDiagram
     Worker->>Parser: Parses Document (pdf2json / mammoth)
     Parser-->>Worker: Returns { pageCount, rawText, chunks }
     
-    par Document Summarization & Vector Embeddings
-        Worker->>Gemini: generateDocumentSummary(rawText)
-        Gemini-->>Worker: Returns 2-3 sentence summary
-    and Chunk Embedding Generation
-        Worker->>Gemini: getEmbeddingsForChunks(chunks)
-        Gemini-->>Worker: Returns 3072-dim vectors for each chunk
-    end
+    Worker->>Gemini: generateDocumentSummary(rawText)
+    Gemini-->>Worker: Returns 2-4 sentence executive summary
+    Worker->>Gemini: getEmbeddingsForChunks(chunks, userId, { summary, fileName })
+    Gemini-->>Worker: Returns vectors for each contextualized chunk
 
     Worker->>Mongo: Verifies document & session are not deleted
     Worker->>Mongo: Bulk inserts document_chunks
@@ -807,21 +804,32 @@ If AWS SQS is unreachable or disabled during local development, the API controll
 ### 6.2 Chunking Specifications
 - **Target Chunk Size**: ~1,200 characters per chunk.
 - **Chunk Overlap**: 200 characters to prevent loss of context across boundaries.
-- **Metadata Stamping**: Every chunk is stamped with its source `documentId`, `sessionId`, `userId`, `pageNumber`, and sequence `chunkIndex`.
-
 ### 6.3 Embedding & Vector Similarity Algorithm
-- **Embedding Model**: `gemini-embedding-001` (3072-dimensional vector floats).
+- **Embedding Model**: `gemini-embedding-001` (768-dimensional vector floats).
+- **Contextual Embedding Ingestion**: To prevent semantic drift across segmented chunks, each chunk is contextualized with the document name and executive summary prior to vector calculation:
+  ```text
+  Document: [fileName]
+  Summary: [summary]
+
+  Content:
+  [chunk.content]
+  ```
+  Original clean content is saved to MongoDB for citations and rendering.
 - **Vector Retrieval**: Computes dot-product cosine similarity between the query embedding and stored chunk vectors:
 ```
 Cosine Similarity = (A · B) / (||A|| * ||B||)
 ```
 - **Filter Constraints**: Strictly scoped to `{ sessionId, userId, isDeleted: false }`.
-- **Top-K Selection**: Top 5 highest scoring chunks are assembled into the conversational prompt context.
+- **Top-K Selection**: Top chunks (default 8) exceeding similarity threshold are assembled into the conversational prompt context.
 
-### 6.4 Model Fallback Cascade
+### 6.4 Conversational Memory Window
+- **Sliding History Window**: RAG completions retrieve the last 6 messages (`CHAT_HISTORY_MESSAGE_LIMIT: 6`) for the active session and user.
+- **Dialogue Injection**: Prior turns (`User: ...` / `Assistant: ...`) are injected before the current user question, maintaining pronoun reference resolution and conversational coherence.
+
+### 6.5 Model Fallback Cascade
 To safeguard against rate limits or service degradation, LLM calls cascade through multiple model configurations:
-1. Primary: `gemini-2.5-flash`
-2. Fallback: `gemini-2.5-flash-lite`
+1. Primary: `gemini-3.5-flash`
+2. Fallback: `gemini-3.5-flash-lite`, `gemini-3.6-flash`
 
 ---
 

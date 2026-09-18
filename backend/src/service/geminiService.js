@@ -203,10 +203,11 @@ export async function getEmbeddingsBatch(texts) {
  * API calls with controlled concurrency.
  *
  * Mutates each chunk in-place by setting `chunk.embedding` and `chunk.userId`.
- *
  * @param {Object[]} chunks - Array of chunk objects with `.content` property
  * @param {string} userId - User ID to set on each chunk
  * @param {Object} [options]
+ * @param {string} [options.summary] - Optional document summary to contextualize chunk embeddings
+ * @param {string} [options.fileName] - Optional file name to contextualize chunk embeddings
  * @param {number} [options.batchSize] - Texts per API call (default from GEMINI_CONFIG)
  * @param {number} [options.concurrency] - Parallel batch requests (default from GEMINI_CONFIG)
  * @returns {Promise<Object[]>} The same chunks array with embeddings populated
@@ -215,6 +216,7 @@ export async function getEmbeddingsForChunks(chunks, userId, options = {}) {
   const SUB_CONTEXT = getEmbeddingsForChunks.name;
   if (!chunks || chunks.length === 0) return chunks;
 
+  const { summary = '', fileName = '' } = options;
   const batchSize = options.batchSize || GEMINI_CONFIG.EMBEDDING_BATCH_SIZE || 100;
   const concurrency = options.concurrency || GEMINI_CONFIG.EMBEDDING_BATCH_CONCURRENCY || 5;
 
@@ -222,10 +224,25 @@ export async function getEmbeddingsForChunks(chunks, userId, options = {}) {
     totalChunks: chunks.length,
     batchSize,
     concurrency,
+    hasSummary: Boolean(summary),
     estimatedBatches: Math.ceil(chunks.length / batchSize),
   });
 
   const startTime = Date.now();
+
+  // Helper to construct contextualized text for embedding while preserving clean chunk.content
+  const formatTextForEmbedding = (chunk) => {
+    const chunkFileName = fileName || chunk.metadata?.fileName || '';
+    const parts = [];
+    if (chunkFileName) {
+      parts.push(`Document: ${chunkFileName}`);
+    }
+    if (summary) {
+      parts.push(`Summary: ${summary}`);
+    }
+    parts.push(`Content:\n${chunk.content}`);
+    return parts.join('\n\n');
+  };
 
   // Split chunks into batches
   const batches = [];
@@ -245,7 +262,7 @@ export async function getEmbeddingsForChunks(chunks, userId, options = {}) {
     });
 
     const waveResults = await Promise.all(
-      wave.map((batch) => getEmbeddingsBatch(batch.map((c) => c.content)))
+      wave.map((batch) => getEmbeddingsBatch(batch.map(formatTextForEmbedding)))
     );
 
     // Assign embeddings back to chunks
@@ -273,11 +290,15 @@ export async function getEmbeddingsForChunks(chunks, userId, options = {}) {
 }
 
 /**
- * Streams conversational RAG answer given user prompt and relevant context chunks
+ * Streams conversational RAG answer given user prompt, relevant context chunks, and prior chat history
  */
-export async function* streamRagCompletion({ prompt, contextChunks = [] }) {
+export async function* streamRagCompletion({ prompt, contextChunks = [], chatHistory = [] }) {
   const SUB_CONTEXT = streamRagCompletion.name;
-  logger.info('Starting streaming RAG generation with Gemini', CONTEXT, SUB_CONTEXT, { chunkCount: contextChunks.length, promptLength: prompt.length });
+  logger.info('Starting streaming RAG generation with Gemini', CONTEXT, SUB_CONTEXT, {
+    chunkCount: contextChunks.length,
+    promptLength: prompt.length,
+    historyLength: chatHistory.length,
+  });
 
   // Mock only runs when ENV === 'test'
   if (process.env.ENV === constant.ENVS.TEST) {
@@ -307,7 +328,19 @@ export async function* streamRagCompletion({ prompt, contextChunks = [] }) {
     ...GEMINI_CONFIG.LLM_CANDIDATE_MODELS,
   ].filter((v, idx, arr) => arr.indexOf(v) === idx);
 
-  const fullUserPrompt = `Context Documents:\n${formattedContext}\n\nUser Question:\n${prompt}`;
+  // Format previous conversation turns if available
+  let formattedHistory = '';
+  if (chatHistory && chatHistory.length > 0) {
+    const turns = chatHistory
+      .map((msg) => {
+        const roleName = msg.sender === 'user' ? 'User' : 'Assistant';
+        return `${roleName}: ${msg.content}`;
+      })
+      .join('\n\n');
+    formattedHistory = `Prior Conversation History:\n${turns}\n\n`;
+  }
+
+  const fullUserPrompt = `Context Documents:\n${formattedContext}\n\n${formattedHistory}Current User Question:\n${prompt}`;
 
   let streamResult = null;
   let activeModel = primaryModel;

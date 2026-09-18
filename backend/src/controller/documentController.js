@@ -1,9 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { s3Service } from '../service/s3Service.js';
-import { parsingService } from '../service/parsingService.js';
-import { geminiService } from '../service/geminiService.js';
 import { sqsProducer } from '../sqs/producer/index.js';
+import { processDocumentJob } from '../sqs/consumer/documentConsumer.js';
 import { DOCUMENT_STATUS, SESSION_STATUS, HTTP_STATUS, ERROR_CODES, TEXT_FILE_EXTENSIONS, TEXT_MIME_TYPES, PREVIEW_LIMITS } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -122,53 +121,18 @@ export async function uploadDocuments(req, res) {
           error: sqsErr.message,
         });
 
-        // In-process fallback
-        (async () => {
-          const INGEST_SUB_CONTEXT = 'processAsyncDocumentFallback';
-          try {
-            logger.info('Starting local fallback document ingestion', CONTEXT, INGEST_SUB_CONTEXT, { documentId, fileName: file.originalname });
-
-            const { pageCount, rawText, chunks } = await parsingService.parseDocument({
-              buffer: file.buffer,
-              fileName: file.originalname,
-              mimeType: file.mimetype,
+        // In-process fallback: directly invoke worker processing job with in-memory buffer
+        setImmediate(() => {
+          processDocumentJob({
+            ...jobPayload,
+            buffer: file.buffer,
+          }).catch((fallbackErr) => {
+            logger.error('Local fallback document ingestion failed', CONTEXT, 'processAsyncDocumentFallback', {
               documentId,
-              sessionId,
+              error: fallbackErr.message,
             });
-
-            const [summary] = await Promise.all([
-              geminiService.generateDocumentSummary(rawText),
-              geminiService.getEmbeddingsForChunks(chunks, userId),
-            ]);
-
-            const [curDoc, curSession] = await Promise.all([
-              mongoRepositories.documents.fetchOne({ documentId, userId, isDeleted: false }),
-              mongoRepositories.sessions.fetchOne({ sessionId, userId, isDeleted: false }),
-            ]);
-
-            if (!curDoc || !curSession) {
-              logger.info('Document or session deleted during async processing. Skipping persistence.', CONTEXT, INGEST_SUB_CONTEXT, { documentId, sessionId });
-              return;
-            }
-
-            if (chunks.length > 0) {
-              await mongoRepositories.documentChunks.bulkInsert(chunks);
-            }
-
-            await mongoRepositories.documents.update(
-              { documentId, userId },
-              { status: DOCUMENT_STATUS.READY, pageCount, summary }
-            );
-
-            logger.info('Local fallback document ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, hasSummary: Boolean(summary) });
-          } catch (fallbackErr) {
-            logger.error('Local fallback document ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId, error: fallbackErr.message });
-            await mongoRepositories.documents.update(
-              { documentId, userId },
-              { status: DOCUMENT_STATUS.FAILED, errorMessage: fallbackErr.message }
-            );
-          }
-        })();
+          });
+        });
       }
     }
 
@@ -357,61 +321,15 @@ export async function retryDocument(req, res) {
         error: sqsErr.message,
       });
 
-      // In-process fallback
-      (async () => {
-        const INGEST_SUB_CONTEXT = 'processAsyncDocumentRetryFallback';
-        try {
-          logger.info('Starting local fallback document retry ingestion', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId });
-          const buffer = await s3Service.getObjectBuffer({ key: document.s3Key });
-
-          const { pageCount, rawText, chunks } = await parsingService.parseDocument({
-            buffer,
-            fileName: document.fileName,
-            mimeType: document.mimeType,
-            documentId: document.documentId,
-            sessionId: document.sessionId,
+      // In-process fallback: directly invoke worker processing job
+      setImmediate(() => {
+        processDocumentJob(jobPayload).catch((fallbackErr) => {
+          logger.error('Local fallback document retry ingestion failed', CONTEXT, 'processAsyncDocumentRetryFallback', {
+            documentId: docId,
+            error: fallbackErr.message,
           });
-
-          const [summary] = await Promise.all([
-            geminiService.generateDocumentSummary(rawText),
-            (async () => {
-              for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                chunk.userId = userId;
-                chunk.embedding = await geminiService.getEmbedding(chunk.content);
-              }
-              return chunks;
-            })(),
-          ]);
-
-          const [curDoc, curSession] = await Promise.all([
-            mongoRepositories.documents.fetchOne({ documentId: docId, userId, isDeleted: false }),
-            mongoRepositories.sessions.fetchOne({ sessionId, userId, isDeleted: false }),
-          ]);
-
-          if (!curDoc || !curSession) {
-            logger.info('Document or session deleted during async retry. Skipping persistence.', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId, sessionId });
-            return;
-          }
-
-          if (chunks.length > 0) {
-            await mongoRepositories.documentChunks.bulkInsert(chunks);
-          }
-
-          await mongoRepositories.documents.update(
-            { documentId: docId, userId },
-            { status: DOCUMENT_STATUS.READY, pageCount, summary, errorMessage: null }
-          );
-
-          logger.info('Local fallback document retry ingestion completed', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId });
-        } catch (fallbackErr) {
-          logger.error('Local fallback document retry ingestion failed', CONTEXT, INGEST_SUB_CONTEXT, { documentId: docId, error: fallbackErr.message });
-          await mongoRepositories.documents.update(
-            { documentId: docId, userId },
-            { status: DOCUMENT_STATUS.FAILED, errorMessage: fallbackErr.message }
-          );
-        }
-      })();
+        });
+      });
     }
 
     return res.success('Document retry scheduled successfully', sanitizeDocument(updatedDoc), HTTP_STATUS.OK);

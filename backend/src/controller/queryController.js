@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { ragService } from '../service/ragService.js';
 import { geminiService } from '../service/geminiService.js';
-import { MESSAGE_SENDER, SESSION_STATUS, HTTP_STATUS, ERROR_CODES, RAG_CONFIG, SSE_CONFIG } from '../utils/constant/index.js';
+import { MESSAGE_SENDER, SESSION_STATUS, HTTP_STATUS, ERROR_CODES, RAG_CONFIG, SSE_CONFIG, GEMINI_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
 const CONTEXT = 'queryController';
@@ -44,6 +44,13 @@ export async function querySession(req, res) {
     });
 
     logger.info('Found relevant chunks for context', CONTEXT, SUB_CONTEXT, { chunkCount: relevantChunks.length });
+
+    // Retrieve past messages (4-6 messages) to maintain conversational context
+    const priorChatHistory = await mongoRepositories.chatMessages.findRecentBySession(
+      sessionId,
+      { userId },
+      GEMINI_CONFIG.CHAT_HISTORY_MESSAGE_LIMIT
+    );
 
     // Record user message with owner userId if not a retry of the last unanswered message
     const lastMsg = await mongoRepositories.chatMessages.findLastBySession(sessionId, { userId });
@@ -91,10 +98,11 @@ export async function querySession(req, res) {
 
       let fullAssistantReply = '';
 
-      logger.info('Initiating LLM stream response', CONTEXT, SUB_CONTEXT, { sessionId });
+      logger.info('Initiating LLM stream response', CONTEXT, SUB_CONTEXT, { sessionId, historyCount: priorChatHistory.length });
       const generator = geminiService.streamRagCompletion({
         prompt,
         contextChunks: relevantChunks,
+        chatHistory: priorChatHistory,
       });
 
       for await (const token of generator) {
@@ -125,6 +133,7 @@ export async function querySession(req, res) {
       const generator = geminiService.streamRagCompletion({
         prompt,
         contextChunks: relevantChunks,
+        chatHistory: priorChatHistory,
       });
       for await (const token of generator) {
         fullAssistantReply += token;

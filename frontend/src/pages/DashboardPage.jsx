@@ -190,7 +190,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
   const filteredSessions = sessions;
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="w-full max-w-7xl mx-auto px-6 py-8">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-8 border-b border-slate-800">
         <div>
@@ -235,7 +235,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
             <span>{error}</span>
           </div>
           <button
-            onClick={loadSessions}
+            onClick={loadInitialSessions}
             className="px-2.5 py-1 rounded-lg bg-red-900/50 hover:bg-red-900 text-red-200 transition"
           >
             Retry
@@ -283,11 +283,11 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
       </div>
 
       {/* Sessions Grid */}
-      <div className="mt-8">
+      <div className="mt-8 min-h-[420px] transition-opacity duration-200">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+          <div className="flex flex-col items-center justify-center py-20 text-slate-500 min-h-[350px]">
             <RefreshCw className="w-6 h-6 animate-spin text-indigo-400 mb-2" />
-            <span className="text-xs">Loading sessions from backend...</span>
+            <span className="text-xs">Loading sessions...</span>
           </div>
         ) : error && sessions.length === 0 ? (
           <ErrorView
@@ -298,7 +298,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
             onRetry={loadInitialSessions}
           />
         ) : filteredSessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center border border-dashed border-slate-800 rounded-2xl bg-slate-950/40">
+          <div className="flex flex-col items-center justify-center py-24 text-center border border-dashed border-slate-800 rounded-2xl bg-slate-950/40 min-h-[350px]">
             <div className="p-4 rounded-2xl bg-slate-900 text-slate-500 mb-3">
               <FolderOpen className="w-8 h-8" />
             </div>
@@ -318,7 +318,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
             )}
           </div>
         ) : (
-          <>
+          <div className="transition-opacity duration-200 animate-in fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredSessions.map((session) => (
                 <SessionCard
@@ -342,7 +342,7 @@ export default function DashboardPage({ onSelectSession, onLogout }) {
                 <span className="text-[11px] text-slate-400 font-medium">Loading more sessions...</span>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
 

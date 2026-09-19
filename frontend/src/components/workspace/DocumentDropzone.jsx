@@ -26,6 +26,7 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    noKeyboard: true,
     disabled: isUploading,
     maxSize: 25 * 1024 * 1024, // 25 MB
     accept: {
@@ -40,7 +41,14 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
   return (
     <div className="flex flex-col gap-2">
       <div
-        {...getRootProps()}
+        {...getRootProps({
+          tabIndex: -1,
+          onKeyDown: (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          },
+        })}
+        data-dropzone="true"
         className={`relative flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-200 text-center ${
           isDragActive
             ? 'border-indigo-500 bg-indigo-500/10 scale-[0.99]'

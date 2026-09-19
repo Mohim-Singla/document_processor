@@ -18,18 +18,11 @@ export default function ChatInterface({
   const inputRef = useRef(null);
 
   // Auto-focus the input when user starts typing anywhere on the page
+  // If there is text in the text box and user presses Enter, send the message
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Skip if modifier keys are held (allow browser/OS shortcuts)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-      // Skip if already focused on an interactive element
-      const tag = document.activeElement?.tagName?.toLowerCase();
-      const isEditable = document.activeElement?.isContentEditable;
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || isEditable) return;
-
-      // Skip non-printable keys (arrows, function keys, Escape, Tab, etc.)
-      if (e.key.length !== 1) return;
 
       // Skip if streaming (input is disabled)
       if (isStreaming) return;
@@ -37,13 +30,33 @@ export default function ChatInterface({
       // Skip if session is archived (no input to focus)
       if (isArchived) return;
 
+      // Skip if already focused on an interactive element
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      const isEditable = document.activeElement?.isContentEditable;
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || isEditable) return;
+
+      // If user presses Enter anywhere in session workspace:
+      // If there is text, send the message
+      if (e.key === 'Enter') {
+        if (tag === 'button' || tag === 'a') return;
+        if (input.trim()) {
+          e.preventDefault();
+          onSendMessage?.(input.trim());
+          setInput('');
+        }
+        return;
+      }
+
+      // Skip non-printable keys (arrows, function keys, Escape, Tab, etc.)
+      if (e.key.length !== 1) return;
+
       // Focus the input — the browser will naturally insert the typed character
       inputRef.current?.focus();
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isStreaming, isArchived]);
+  }, [input, isStreaming, isArchived, onSendMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

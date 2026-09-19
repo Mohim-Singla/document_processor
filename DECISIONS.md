@@ -429,7 +429,7 @@ With long polling (`WaitTimeSeconds: 20`), the SQS connection stays open up to 2
 ## 16. UX Resilience & Inspection: In-Window Document Preview & Failed Document Retry
 
 ### The Decision
-We added two critical capabilities directly inside the session workspace interface (`frontend/src/components/workspace/`):
+Added two critical capabilities directly inside the session workspace interface (`frontend/src/components/workspace/`):
 1. **In-Window Document Preview Modal (`DocumentPreviewModal.jsx`)**: Allowed users to view extracted document text chunks, source pages, and download raw files via secure S3 pre-signed URLs without leaving the active chat session or navigating away.
 2. **One-Click Ingestion Retry (`POST /api/v1/documents/:documentId/retry`)**: Added a direct retry button on failed document list items (`DocumentListItem.jsx`) that resets document status back to `PENDING` and re-publishes the processing job to the AWS SQS queue without requiring the user to re-upload the file to S3.
 
@@ -456,7 +456,7 @@ Because the raw file is already safely persisted in S3 and document metadata exi
 ## 17. UX Ergonomics: Auto-Focus Chat Input on Natural Typing
 
 ### The Decision
-In `frontend/src/components/workspace/ChatInterface.jsx`, we implemented a global keydown event listener that intercepts printable keystrokes typed anywhere on the page and transfers focus immediately to the chat query input (`inputRef.current?.focus()`), allowing the browser to capture the user's typed characters without dropping the first keystroke.
+In `frontend/src/components/workspace/ChatInterface.jsx`, implemented a global keydown event listener that intercepts printable keystrokes typed anywhere on the page and transfers focus immediately to the chat query input (`inputRef.current?.focus()`), allowing the browser to capture the user's typed characters without dropping the first keystroke.
 
 ### The Alternatives
 1. **Default browser focus behavior**: Requiring users to explicitly click the text input with their mouse every time they want to ask a question or continue a conversation.
@@ -506,7 +506,7 @@ When a valid printable character (`e.key.length === 1`) is pressed, focus is ins
 ## 19. Public Landing Page: Conversion-Focused Onboarding vs. Raw Login Wall
 
 ### The Decision
-We introduced a dedicated, content-rich public landing page (`frontend/src/pages/LandingPage.jsx`) at the root URL (`/`), replacing the default behavior where unauthenticated visitors were immediately blocked by a raw login/signup card (`LoginPage.jsx`).
+Introduced a dedicated, content-rich public landing page (`frontend/src/pages/LandingPage.jsx`) at the root URL (`/`), replacing the default behavior where unauthenticated visitors were immediately blocked by a raw login/signup card (`LoginPage.jsx`).
 
 ### The Reasoning
 The primary driver for introducing a dedicated landing page was to **push organic visitors toward account signup by demonstrating tangible value before asking for credentials**:

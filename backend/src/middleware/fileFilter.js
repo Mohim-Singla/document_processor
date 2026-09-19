@@ -23,7 +23,7 @@ export function fileFilter(req, file, cb) {
       ext,
     });
     return cb(
-      new Error(`Unsupported file type '${ext || mimeType}'. Allowed types: PDF, DOCX, TXT, PNG, JPEG, WEBP, BMP, TIFF.`),
+      new Error(`Unsupported file type '${ext || mimeType}'. Allowed types: PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, PNG, JPEG, WEBP, BMP, TIFF.`),
       false
     );
   }

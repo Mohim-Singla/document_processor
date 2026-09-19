@@ -110,8 +110,9 @@ graph TD
 #### 5. Document Dropzone (`src/components/workspace/DocumentDropzone.jsx`)
 - **Role**: Drag-and-drop file ingestion zone.
 - **Key Responsibilities**:
-  - Enforces client-side validation using configurable thresholds (initial defaults: max 10 MB per file, max 10 files per batch) along with allowed MIME types (PDF, DOCX, TXT, common image formats).
-  - Displays visual validation alerts when limits or file types are violated.
+  - Enforces client-side validation using configurable thresholds (initial defaults: max 10 MB per file, max 10 files per batch) along with allowed MIME types (PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, and common images).
+  - Configures `noKeyboard: true`, `tabIndex: -1`, and event suppression on the dropzone root (`data-dropzone="true"`) to prevent unintended file-picker popups or conflicting event propagation when users navigate or press keys in the workspace.
+  - Displays visual validation alerts when limits or unsupported file types are rejected.
   - Emits selected files to the parent upload handler with instant visual drop feedback.
   - Automatically hidden in archived workspaces to prevent file uploads.
 
@@ -130,6 +131,9 @@ graph TD
   - Parses and renders Markdown structures (tables, code blocks, bullet lists).
   - Renders interactive citation chips that trigger the citation drawer upon click.
   - Provides a prompt retry button for interrupted or failed queries.
+  - Ambient typing auto-focus: intercepts printable keystrokes typed anywhere within the active workspace to focus the query input without dropping the first character.
+  - Ambient Enter key submission: if the prompt input contains text, pressing the <kbd>Enter</kbd> key anywhere in the workspace (when not focused on a button, link, or dropzone) dispatches the message, clears the input, and preserves conversational flow.
+  - Dropzone & interactive element isolation: skips ambient keystrokes and Enter submission when focus is within buttons, links, or file dropzones (`[data-dropzone]`).
   - Enforces archived state behavior: replaces the prompt input box with an amber archived banner ("This session is archived. Restore it to upload documents or ask questions.") featuring a direct "Restore Session" action button, and suppresses keyboard auto-focus shortcuts when archived.
 
 #### 8. Citation Drawer (`src/components/workspace/CitationDrawer.jsx`)

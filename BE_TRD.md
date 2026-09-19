@@ -547,6 +547,13 @@ Authorization: Bearer <signed_jwt_token>
   - `Content-Type: multipart/form-data`
 - **Request Payload**:
   - Field name: `files` (array of multipart file buffers; configurable thresholds with initial defaults: max 10 MB per file, max 10 files per batch).
+  - Allowed file formats:
+    - Documents: PDF (`application/pdf`), Word DOCX (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`)
+    - Plaintext & Markdown: TXT (`text/plain`), MD (`text/markdown`, `text/x-markdown`, `.md`, `.markdown`)
+    - Tabular & Structured Data: CSV (`text/csv`, `application/csv`, `text/x-csv`), TSV (`text/tab-separated-values`, `text/tsv`), JSON (`application/json`, `text/json`), XML (`application/xml`, `text/xml`), YAML (`application/x-yaml`, `text/yaml`, `text/x-yaml`, `.yaml`, `.yml`)
+    - Markup & Logs: HTML (`text/html`, `.html`, `.htm`), Logs (`text/plain`, `text/x-log`, `.log`)
+    - Images: PNG (`image/png`), JPEG (`image/jpeg`, `.jpg`, `.jpeg`), WebP (`image/webp`), BMP (`image/bmp`), TIFF (`image/tiff`, `.tif`)
+    - *(Executable code formats like .py, .js, .ts, .sh, .sql are rejected by fileFilter)*
 - **Success Response (202 Accepted)**:
 ```json
 {
@@ -799,7 +806,8 @@ If AWS SQS is unreachable or disabled during local development, the API controll
 ### 6.1 Parsing Algorithms
 - **PDF Documents**: Page-level extraction using `pdf2json`. Handles URI-encoded character recovery and defensive fallbacks to preserve structural page boundaries.
 - **DOCX Documents**: Native extraction via `mammoth`, converting Word paragraphs and tables into structured clean text.
-- **Plain Text / Code Files**: Direct UTF-8 buffer decoding with line-break normalization.
+- **Scanned Documents & Images**: Optical Character Recognition (OCR) via Tesseract OCR engine (`tesseract.js`), extracting text across PNG, JPEG, WebP, BMP, and TIFF assets.
+- **Plain Text & Structured Data (TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG)**: Direct UTF-8 buffer decoding (`buffer.toString('utf-8')`) with line-break normalization, preserving structural formatting, markdown syntax, CSV rows, and JSON/YAML hierarchy for chunking.
 
 ### 6.2 Chunking Specifications
 - **Target Chunk Size**: ~1,200 characters per chunk.

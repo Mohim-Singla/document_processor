@@ -471,8 +471,10 @@ Every time a user clicked any button, closed a modal, or selected an item, brows
 The global keydown listener solves this by detecting when the user begins typing. It intentionally filters out non-target interactions:
 - It ignores modifier key combinations (`metaKey`, `ctrlKey`, `altKey`) so OS and browser shortcuts (like `Cmd+C`, `Cmd+V`, `Cmd+R`) remain unaffected.
 - It ignores keystrokes when focus is already inside another editable element (`input`, `textarea`, `select`, or `contentEditable`).
+- It ignores keystrokes when interacting with the file dropzone (`[data-dropzone]`) to prevent accidental file picker triggers.
 - It ignores non-printable navigation keys (arrows, Escape, Tab, function keys).
 - It ignores typing when an LLM answer is actively streaming and the input is disabled.
+- When <kbd>Enter</kbd> is pressed anywhere in the workspace while text is present in the prompt input (and focus is not on a button, link, or dropzone), it immediately dispatches the prompt, clears the input, and preserves conversational momentum.
 
 When a valid printable character (`e.key.length === 1`) is pressed, focus is instantly redirected to the input box, allowing the browser's native event pipeline to insert the character seamlessly.
 
@@ -514,3 +516,19 @@ The primary driver for introducing a dedicated landing page was to **push organi
 - **Showcasing Product Value & Verification Trust**: An interactive mock workspace preview on the landing page immediately demonstrates the application's unique value proposition: multi-format document ingestion, real-time conversational streaming, and verifiable page-level source citations. Seeing how citations work builds immediate trust.
 - **Target Persona Alignment (MVP)**: The landing page explicitly frames use cases for target audiences—academic researchers, product managers, and content writers—clarifying immediate workflows and prompting signups.
 - **Single-Origin Deployment Simplicity**: Rather than managing, designing, and hosting a secondary marketing website on external platforms, building the landing page natively into the React SPA delivers a seamless transition: clicking "Get Started Free" opens the signup modal directly on the same page with zero redirect lag or cross-domain authentication friction.
+
+---
+
+## 20. Non-Code Text & Structured Data Ingestion Expansion
+
+### The Decision
+Expanded the supported document ingestion catalog across the backend file filter (`fileFilter.js`, `fileTypes.js`) and frontend dropzone (`DocumentDropzone.jsx`) to include all major non-code plaintext and structured data formats:
+- **Markdown**: `.md`, `.markdown` (`text/markdown`, `text/x-markdown`, `text/plain`)
+- **Tabular Data**: `.csv`, `.tsv` (`text/csv`, `text/tab-separated-values`, `text/tsv`)
+- **Structured Data & Markup**: `.json` (`application/json`), `.xml` (`application/xml`, `text/xml`), `.html`, `.htm` (`text/html`)
+- **Configurations & Logs**: `.yaml`, `.yml` (`application/x-yaml`, `text/yaml`), `.log` (`text/plain`, `text/x-log`)
+- Explicitly excluded executable code formats (`.py`, `.js`, `.ts`, `.sh`, `.sql`).
+
+### The Reasoning
+The ingestion pipeline's text-extraction architecture inherently decodes non-binary payloads via `buffer.toString('utf-8')` before applying semantic character chunking and vector embedding generation. Consequently, adding support for Markdown, CSV, JSON, XML, YAML, HTML, and log files required zero new runtime parsing libraries or heavyweight dependencies, immediately unlocking rich tabular and structured data retrieval for users with zero performance penalty. Code formats were intentionally excluded to prevent syntactic token bloat and maintain relevance for document and research analysis.
+

@@ -101,12 +101,16 @@ journey
 - **Supported Document Formats**:
   - Portable Document Format (PDF)
   - Microsoft Word Documents (DOCX)
-  - Plain Text and Structured Text Files (TXT, CSV, Markdown)
-  - Scanned Documents and Images (PNG, JPEG, WebP, TIFF)
+  - Plain Text & Markdown (TXT, MD, MARKDOWN)
+  - Tabular & Structured Data (CSV, TSV, JSON, XML, YAML, YML)
+  - Web Markup & Server Logs (HTML, HTM, LOG)
+  - Scanned Documents and Images (PNG, JPEG, JPG, WebP, BMP, TIFF)
+  - *(Excludes executable code files like .py, .js, .ts, .sh, .sql)*
 - **Ingestion Limits**:
   - File size: Up to 10 MB per file (initial default, configurable)
   - Batch upload: Up to 10 files per upload action (initial default, configurable)
   - Visual validation alerts displayed when limits are exceeded
+- **Dropzone Interaction Isolation**: Key press events on the upload dropzone are suppressed to avoid accidental file-picker dialog re-openings during keyboard-driven navigation.
 - **Real-Time Processing Status**: Each document displays its current ingestion status:
   - **Queued**: Document received and awaiting processing
   - **Processing**: Document text, layout, and structure being analyzed
@@ -122,6 +126,9 @@ journey
 
 ### 5.4 Conversational Q&A & Document Intelligence
 - **Natural Language Chat**: A conversational input field where users can ask questions in plain language regarding any or all documents in the active workspace.
+- **Ambient Typing Auto-Focus & Enter Key Dispatch**:
+  - Typing anywhere within the active workspace naturally routes keystrokes into the query input box without dropping the first character.
+  - When text is already present in the prompt box, pressing the <kbd>Enter</kbd> key anywhere in the workspace immediately sends the query, clears the input, and re-focuses for rapid conversation flow.
 - **Real-Time Streaming Responses**: Answers appear progressively with a responsive streaming animation as they are generated.
 - **Multi-Document Synthesis**: The system answers questions by synthesizing information across multiple documents within the workspace using contextual embeddings (where document-level summaries ground segmented chunk vectors).
 - **Multi-Turn Conversational Memory**:
@@ -170,7 +177,7 @@ journey
 
 ### 7.1 In Scope for Version 1
 - Single-user workspace authentication and personal management.
-- Multi-document upload (PDF, DOCX, TXT, images) with configurable thresholds (initial defaults: up to 10 MB per file, max 10 files per batch).
+- Multi-document upload (PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, and images) with configurable thresholds (initial defaults: up to 10 MB per file, max 10 files per batch).
 - Real-time document status tracking with one-click retry on ingestion failure.
 - In-app document preview with AI-generated executive summaries, graceful multi-format rendering, and original file download option.
 - Conversational querying with real-time answer streaming.

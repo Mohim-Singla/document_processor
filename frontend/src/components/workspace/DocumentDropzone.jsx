@@ -9,7 +9,7 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
     async (acceptedFiles, fileRejections) => {
       setErrorMsg('');
       if (fileRejections.length > 0) {
-        setErrorMsg('Some files were rejected. Please only upload PDF, DOCX, TXT, or images (max 25MB each).');
+        setErrorMsg('Some files were rejected. Supported formats: PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, or images (max 10MB each).');
         return;
       }
 
@@ -28,13 +28,32 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
     onDrop,
     noKeyboard: true,
     disabled: isUploading,
-    maxSize: 25 * 1024 * 1024, // 25 MB
+    maxSize: 10 * 1024 * 1024, // 10 MB
     accept: {
       'application/pdf': ['.pdf'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'text/plain': ['.txt'],
+      'text/plain': ['.txt', '.log'],
+      'text/markdown': ['.md', '.markdown'],
+      'text/x-markdown': ['.md', '.markdown'],
+      'text/csv': ['.csv'],
+      'application/csv': ['.csv'],
+      'text/x-csv': ['.csv'],
+      'text/tab-separated-values': ['.tsv'],
+      'text/tsv': ['.tsv'],
+      'application/json': ['.json'],
+      'text/json': ['.json'],
+      'application/xml': ['.xml'],
+      'text/xml': ['.xml'],
+      'text/html': ['.html', '.htm'],
+      'application/x-yaml': ['.yaml', '.yml'],
+      'text/yaml': ['.yaml', '.yml'],
+      'text/x-yaml': ['.yaml', '.yml'],
+      'text/x-log': ['.log'],
       'image/png': ['.png'],
       'image/jpeg': ['.jpg', '.jpeg'],
+      'image/webp': ['.webp'],
+      'image/bmp': ['.bmp'],
+      'image/tiff': ['.tiff', '.tif'],
     },
   });
 
@@ -63,7 +82,7 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
           {isDragActive ? 'Drop documents here...' : 'Click or drop documents to upload'}
         </p>
         <p className="text-[11px] text-slate-500 mt-1">
-          PDF, DOCX, TXT, PNG, JPG (up to 25MB)
+          PDF, DOCX, TXT, MD, CSV, JSON, XML, YAML, HTML, LOG, Images (up to 25MB)
         </p>
         {isUploading && (
           <div className="mt-3 flex items-center gap-2 text-xs text-indigo-400">

@@ -3,8 +3,8 @@ import { Sparkles, Lock, Mail, User, AlertCircle, ArrowRight } from 'lucide-reac
 import { loginUser, signupUser } from '../services/api';
 import { showBackendSuccess } from '../components/SnackbarContainer';
 
-export default function LoginPage({ onLoginSuccess }) {
-  const [isSignup, setIsSignup] = useState(false);
+export default function LoginPage({ onLoginSuccess, initialIsSignup = false, onBackToLanding }) {
+  const [isSignup, setIsSignup] = useState(initialIsSignup);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,12 +55,23 @@ export default function LoginPage({ onLoginSuccess }) {
         {/* Card Form */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
           <div className="flex items-center justify-between pb-6 mb-6 border-b border-slate-800">
-            <h2 className="text-lg font-semibold text-white">
-              {isSignup ? 'Create Account' : 'Welcome Back'}
-            </h2>
-            <span className="text-xs text-slate-500">
-              {isSignup ? 'Step 1 of 1' : 'Secure Login'}
-            </span>
+            <div>
+              <h2 className="text-lg font-semibold text-white">
+                {isSignup ? 'Create Account' : 'Welcome Back'}
+              </h2>
+              <span className="text-xs text-slate-500">
+                {isSignup ? 'Step 1 of 1' : 'Secure Login'}
+              </span>
+            </div>
+            {onBackToLanding && (
+              <button
+                type="button"
+                onClick={onBackToLanding}
+                className="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800/60 hover:bg-slate-800 transition"
+              >
+                Back to Home
+              </button>
+            )}
           </div>
 
           {error && (

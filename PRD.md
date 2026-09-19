@@ -5,7 +5,7 @@
 
 ## 1. Executive Summary & Vision
 
-Organizations and knowledge workers deal with large volumes of unstructured and semi-structured documents daily, including contracts, financial statements, research papers, reports, policies, forms, and receipts. The valuable information trapped within these files is difficult to locate quickly, analyze across documents, or query conversationally.
+Students, researchers, product analysts, and writers deal with large volumes of unstructured and semi-structured documents daily, including academic papers, market reports, customer interview notes, books, articles, and guidelines. The valuable information trapped within these files is difficult to locate quickly, synthesize across sources, or query conversationally.
 
 The **Document Intelligence & Query System** transforms static, unstructured documents into an interactive, structured, and conversational knowledge base. Users create dedicated topic-based workspaces, upload multiple documents in diverse formats, and instantly ask natural-language questions. The system delivers synthesized answers with pinpoint citations referencing exact source pages and passages, allowing users to verify facts with zero friction while maintaining strict confidentiality and workspace isolation.
 
@@ -14,32 +14,32 @@ The **Document Intelligence & Query System** transforms static, unstructured doc
 ## 2. Problem Statement & Opportunity
 
 ### 2.1 The Problem
-- **Information Silos**: Critical data is locked in disparate document formats (PDFs, Word documents, text files, scanned images) across personal computers and file repositories.
-- **Time-Consuming Manual Search**: Reviewing multi-page documents to locate specific clauses, numbers, or terms requires hours of manual skimming and keyword searching that fails to grasp contextual meaning.
-- **Lack of Trust in AI**: Traditional AI chat systems frequently hallucinate information or fail to provide verifiable source references, making them unsuitable for legal, financial, or analytical tasks.
-- **Context Loss**: Existing tools do not provide organized workspaces where multiple related documents can be analyzed together while preserving context across browser sessions.
+- **Information Overload & Silos**: Critical ideas and research findings are locked in disparate document formats (PDFs, Word documents, text files, scanned notes) across personal folders.
+- **Time-Consuming Skimming**: Reviewing multi-page literature reviews, whitepapers, or interview transcripts requires hours of manual skimming and keyword searching that fails to grasp thematic meaning.
+- **Lack of Verification in AI**: Traditional AI chat systems frequently hallucinate information or fail to provide verifiable source references, making them unhelpful when writing papers, reports, or articles that require source attribution.
+- **Context Loss**: Existing tools do not provide organized workspaces where multiple related research files can be analyzed together while preserving context across browser sessions.
 
 ### 2.2 The Product Opportunity
-By combining automated text extraction, intelligent contextual search, and conversational artificial intelligence with verifiable source citations, this system provides users with an authoritative "second brain" for their documents.
+By combining automated text extraction, intelligent contextual search, and conversational artificial intelligence with verifiable source citations, this system provides users with an authoritative "second brain" for their reading and research.
 
 ---
 
 ## 3. Target Personas
 
-### Persona 1: Research & Policy Analyst
-- **Role**: Reviews regulatory guidelines, industry reports, and academic research.
-- **Pain Point**: Needs to cross-examine multiple 50+ page documents to synthesize findings.
-- **Goal**: Ask multi-document questions and receive syntheses with direct citations.
+### Persona 1: Students & Academic Researchers
+- **Role**: University students, graduate researchers, professors, and thesis writers.
+- **Pain Point**: Reading dozens of 30-50 page research papers, literature reviews, and textbook chapters for assignments and dissertations.
+- **Goal**: Ask thematic questions across multiple papers, compare hypotheses, and receive syntheses with clickable page-level citations for their bibliography.
 
-### Persona 2: Operations & Finance Specialist
-- **Role**: Manages invoices, vendor contracts, receipts, and purchase orders.
-- **Pain Point**: Spends hours verifying line items, dates, and payment clauses across files.
-- **Goal**: Quickly locate exact figures, obligations, and terms across documents.
+### Persona 2: Product Managers & Market Analysts
+- **Role**: Product managers, UX researchers, strategy analysts, and consultants.
+- **Pain Point**: Sifting through competitor whitepapers, customer interview transcripts, product requirements, and industry reports.
+- **Goal**: Synthesize recurring customer pain points and market trends across multiple documents into clear, actionable summaries.
 
-### Persona 3: Legal & Compliance Auditor
-- **Role**: Conducts compliance reviews and contract audits.
-- **Pain Point**: Needs 100% confidence that an answer is accurate and directly grounded in the source text.
-- **Goal**: Clickable citations that highlight the exact passage and page from the original document.
+### Persona 3: Content Creators, Writers & Journalists
+- **Role**: Non-fiction authors, technical bloggers, journalists, and newsletter writers.
+- **Pain Point**: Gathering and verifying facts across extensive research dossiers, interview notes, and public reports.
+- **Goal**: Quickly locate exact quotes, cross-reference source materials, and verify historical or thematic facts with direct page links.
 
 ---
 

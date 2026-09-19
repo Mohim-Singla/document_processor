@@ -26,6 +26,7 @@ It captures the actual calls made under ambiguity and time constraints, the alte
 16. [UX Resilience & Inspection: In-Window Document Preview & Failed Document Retry](#16-ux-resilience--inspection-in-window-document-preview--failed-document-retry)
 17. [UX Ergonomics: Auto-Focus Chat Input on Natural Typing](#17-ux-ergonomics-auto-focus-chat-input-on-natural-typing)
 18. [Contextual Retrieval & Conversational Memory: Summary in Embeddings & Sliding Chat Window](#18-contextual-retrieval--conversational-memory-summary-in-embeddings--sliding-chat-window)
+19. [Public Landing Page: Conversion-Focused Onboarding vs. Raw Login Wall](#19-public-landing-page-conversion-focused-onboarding-vs-raw-login-wall)
 
 ---
 
@@ -500,5 +501,16 @@ When a valid printable character (`e.key.length === 1`) is pressed, focus is ins
 
 **Tradeoffs accepted:** Ingestion pipeline runs sequentially (summary first, then chunk embeddings) rather than fully in parallel, adding 1–2 seconds to the ingestion worker job in exchange for significantly higher vector retrieval accuracy.
 
+---
 
+## 19. Public Landing Page: Conversion-Focused Onboarding vs. Raw Login Wall
 
+### The Decision
+We introduced a dedicated, content-rich public landing page (`frontend/src/pages/LandingPage.jsx`) at the root URL (`/`), replacing the default behavior where unauthenticated visitors were immediately blocked by a raw login/signup card (`LoginPage.jsx`).
+
+### The Reasoning
+The primary driver for introducing a dedicated landing page was to **push organic visitors toward account signup by demonstrating tangible value before asking for credentials**:
+- **Eliminating Bounce Friction for Organic Traffic**: When prospective users arrive via organic search, social links, or word-of-mouth, hitting an abrupt login form with zero context creates immediate cognitive friction and high bounce rates. Visitors are reluctant to create an account or provide an email without understanding what the product does.
+- **Showcasing Product Value & Verification Trust**: An interactive mock workspace preview on the landing page immediately demonstrates the application's unique value proposition: multi-format document ingestion, real-time conversational streaming, and verifiable page-level source citations. Seeing how citations work builds immediate trust.
+- **Target Persona Alignment (MVP)**: The landing page explicitly frames use cases for target audiences—academic researchers, product managers, and content writers—clarifying immediate workflows and prompting signups.
+- **Single-Origin Deployment Simplicity**: Rather than managing, designing, and hosting a secondary marketing website on external platforms, building the landing page natively into the React SPA delivers a seamless transition: clicking "Get Started Free" opens the signup modal directly on the same page with zero redirect lag or cross-domain authentication friction.

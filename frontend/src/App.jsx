@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import DashboardPage from './pages/DashboardPage';
 import SessionWorkspacePage from './pages/SessionWorkspacePage';
 import LoginPage from './pages/LoginPage';
+import LandingPage from './pages/LandingPage';
 import SnackbarContainer, { showBackendSuccess } from './components/SnackbarContainer';
 import { getAuthToken, getUser, logout, getSessionById } from './services/api';
 
@@ -9,6 +10,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [activeSession, setActiveSession] = useState(null);
   const [initializing, setInitializing] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authIsSignup, setAuthIsSignup] = useState(false);
 
   // Helper to extract session ID from URL path or query (?session=ID or /session/ID)
   const getSessionIdFromUrl = () => {
@@ -56,7 +59,9 @@ export default function App() {
         setUser(null);
         setActiveSession(null);
         localStorage.removeItem('activeSessionId');
-        window.history.replaceState({}, '', '/login');
+        if (window.location.pathname === '/login') {
+          setShowAuthModal(true);
+        }
       }
 
       setInitializing(false);
@@ -69,14 +74,17 @@ export default function App() {
       setUser(null);
       setActiveSession(null);
       localStorage.removeItem('activeSessionId');
+      setShowAuthModal(true);
       window.history.replaceState({}, '', '/login');
     };
 
     // Handle browser back/forward buttons
     const handlePopState = async () => {
       if (window.location.pathname === '/login') {
+        setShowAuthModal(true);
         return;
       }
+      setShowAuthModal(false);
       const params = new URLSearchParams(window.location.search);
       const targetSessionId = params.get('session');
       if (!targetSessionId) {
@@ -131,8 +139,20 @@ export default function App() {
     window.history.pushState({}, '', newUrl);
   };
 
+  const handleOpenAuth = (isSignup = false) => {
+    setAuthIsSignup(isSignup);
+    setShowAuthModal(true);
+    window.history.pushState({}, '', '/login');
+  };
+
+  const handleBackToLanding = () => {
+    setShowAuthModal(false);
+    window.history.pushState({}, '', '/');
+  };
+
   const handleLoginSuccess = (loggedInUser) => {
     setUser(loggedInUser);
+    setShowAuthModal(false);
     window.history.replaceState({}, '', '/');
   };
 
@@ -141,8 +161,9 @@ export default function App() {
     showBackendSuccess('Signed out successfully');
     setUser(null);
     setActiveSession(null);
+    setShowAuthModal(false);
     localStorage.removeItem('activeSessionId');
-    window.history.replaceState({}, '', '/login');
+    window.history.replaceState({}, '', '/');
   };
 
   const handleSessionUpdate = (updatedSession) => {
@@ -157,7 +178,15 @@ export default function App() {
           Loading Document Intelligence...
         </div>
       ) : !user ? (
-        <LoginPage onLoginSuccess={handleLoginSuccess} />
+        showAuthModal ? (
+          <LoginPage 
+            onLoginSuccess={handleLoginSuccess}
+            initialIsSignup={authIsSignup}
+            onBackToLanding={handleBackToLanding}
+          />
+        ) : (
+          <LandingPage onOpenAuth={handleOpenAuth} />
+        )
       ) : (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
           {activeSession ? (

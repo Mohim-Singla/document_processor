@@ -27,6 +27,8 @@ It captures the actual calls made under ambiguity and time constraints, the alte
 17. [UX Ergonomics: Auto-Focus Chat Input on Natural Typing](#17-ux-ergonomics-auto-focus-chat-input-on-natural-typing)
 18. [Contextual Retrieval & Conversational Memory: Summary in Embeddings & Sliding Chat Window](#18-contextual-retrieval--conversational-memory-summary-in-embeddings--sliding-chat-window)
 19. [Public Landing Page: Conversion-Focused Onboarding vs. Raw Login Wall](#19-public-landing-page-conversion-focused-onboarding-vs-raw-login-wall)
+20. [Non-Code Text & Structured Data Ingestion Expansion](#20-non-code-text--structured-data-ingestion-expansion)
+21. [Login API Latency Optimization](#21-login-api-latency-optimization)
 
 ---
 
@@ -531,4 +533,12 @@ Expanded the supported document ingestion catalog across the backend file filter
 
 ### The Reasoning
 The ingestion pipeline's text-extraction architecture inherently decodes non-binary payloads via `buffer.toString('utf-8')` before applying semantic character chunking and vector embedding generation. Consequently, adding support for Markdown, CSV, JSON, XML, YAML, HTML, and log files required zero new runtime parsing libraries or heavyweight dependencies, immediately unlocking rich tabular and structured data retrieval for users with zero performance penalty. Code formats were intentionally excluded to prevent syntactic token bloat and maintain relevance for document and research analysis.
+
+---
+
+## 21. Login API Latency Optimization
+
+### The Decision
+The `/login` API latency on production was significantly higher (~200ms) compared to all other endpoints running within 30–40ms. After benchmarking, the bottleneck was identified in the pure-JavaScript password hashing library (`bcryptjs`), where key expansion within the V8 runtime consumed ~200–240ms per verification. Migrated to the native C++ `bcrypt` library, resolving the bottleneck and eliminating the CPU-bound latency without requiring any modifications to existing database hashes or API contracts.
+
 

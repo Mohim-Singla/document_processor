@@ -1,6 +1,31 @@
 export const AI_VENDORS = {
   GEMINI: 'gemini',
+  GROQ: 'groq',
   OPENAI: 'openai',
+};
+
+export const GROQ_CONFIG = {
+  DEFAULT_LLM_MODEL: 'openai/gpt-oss-120b',
+  LLM_CANDIDATE_MODELS: [
+    'openai/gpt-oss-120b',
+    'qwen/qwen3.8-27b',
+    'openai/gpt-oss-20b',
+    'groq/compound',
+    'groq/compound-mini',
+  ],
+  SUMMARY_MAX_CHAR_LENGTH: 25000,
+  RETRY_DELAY_MS: 300,
+  CAPACITY_RETRY_DELAY_MS: 500,
+  RATE_LIMIT_ERROR_SIGNALS: [
+    '429',
+    'rate_limit_exceeded',
+    'rate limit',
+    'tokens per minute',
+    'requests per minute',
+    '503',
+    'overloaded',
+    'service unavailable',
+  ],
 };
 
 export const OPENAI_CONFIG = {
@@ -30,6 +55,6 @@ export const OPENAI_CONFIG = {
 };
 
 export const AI_ORCHESTRATION = {
-  DEFAULT_PROVIDER_CHAIN: [AI_VENDORS.GEMINI, AI_VENDORS.OPENAI],
+  DEFAULT_PROVIDER_CHAIN: [AI_VENDORS.GEMINI, AI_VENDORS.GROQ, AI_VENDORS.OPENAI],
   RETRY_DELAY_MS: 300,
 };

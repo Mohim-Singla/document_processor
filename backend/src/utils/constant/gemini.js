@@ -44,7 +44,6 @@ export const GEMINI_CONFIG = {
   EMBEDDING_CANDIDATE_MODELS: [
     'gemini-embedding-001',
     'gemini-embedding-2',
-    'text-embedding-004',
   ],
   LLM_CANDIDATE_MODELS: [
     'gemini-3.5-flash',

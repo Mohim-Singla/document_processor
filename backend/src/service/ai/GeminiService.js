@@ -163,13 +163,20 @@ export class GeminiService extends BaseAIService {
 
         if (isCapacityError && idx < totalCandidates - 1) {
           const nextModel = candidateModels[idx + 1];
+          // Check if Google provided an explicit retryDelay (e.g. "retry in 3s" or retryDelay: "4s")
+          let backoffMs = GEMINI_CONFIG.CAPACITY_RETRY_DELAY_MS;
+          const retryMatch = err.message?.match(/retry in ([0-9.]+)s/i) || err.message?.match(/"retryDelay":\s*"([0-9]+)s"/i);
+          if (retryMatch && parseFloat(retryMatch[1]) <= 10) {
+            backoffMs = Math.ceil(parseFloat(retryMatch[1]) * 1000) + 200;
+          }
+
           logger.warn(
-            `[RETRYING BATCH EMBEDDING] Gemini Model ${candidate} capacity busy. Switching to candidate [${idx + 2}/${totalCandidates}]: ${nextModel}`,
+            `[RETRYING BATCH EMBEDDING] Gemini Model ${candidate} capacity busy. Switching to candidate [${idx + 2}/${totalCandidates}]: ${nextModel} after ${backoffMs}ms`,
             CONTEXT,
             SUB_CONTEXT,
-            { failedModel: candidate, nextModel, error: err.message }
+            { failedModel: candidate, nextModel, backoffMs, error: err.message }
           );
-          await new Promise((r) => setTimeout(r, GEMINI_CONFIG.CAPACITY_RETRY_DELAY_MS));
+          await new Promise((r) => setTimeout(r, backoffMs));
           continue;
         }
 

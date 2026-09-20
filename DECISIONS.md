@@ -547,11 +547,13 @@ The `/login` API latency on production was significantly higher (~200ms) compare
 ## 22. Multi-Provider AI Architecture: Factory & Strategy Fallback Pattern
 
 ### The Decision
-Refactored AI interactions from a hardcoded single-provider Gemini implementation to an extensible class-based architecture utilizing the Factory and Strategy patterns:
+Refactored AI interactions from a hardcoded single-provider Gemini implementation to an extensible multi-provider class architecture utilizing the Factory and Strategy patterns:
 - **`BaseAIService`**: Abstract base defining uniform asynchronous contracts (`getEmbedding`, `getEmbeddingsBatch`, `getEmbeddingsForChunks`, `generateDocumentSummary`, `streamRagCompletion`).
-- **`GeminiService`**: Concrete implementation utilizing `@google/genai` with intra-provider model cascading (`gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-1.5-flash`).
-- **`OpenAIService`**: Concrete fallback implementation utilizing the official `openai` SDK with `gpt-4o-mini` for chat and summary generation and `text-embedding-3-small` for vector embeddings (configured with `dimensions: 768` to ensure vector dimensional compatibility with Gemini embeddings).
-- **`AIFactory` & `MultiProviderAIService`**: Factory and composite orchestrator that automatically routes requests through the configured provider chain and seamlessly catches rate-limit (`429`) or server-overload (`503`) errors, failing over to OpenAI.
+- **`GeminiService`**: Primary provider utilizing `@google/genai` with intra-provider model cascading (`gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-2.5-flash`) for text summaries and generation, and `gemini-embedding-001` / `gemini-embedding-2` for vector embeddings.
+- **`GroqService`**: High-speed secondary provider utilizing the official `groq-sdk`. Configured with high-throughput models (`openai/gpt-oss-120b`, `qwen/qwen3.8-27b`, `openai/gpt-oss-20b`, `groq/compound`, `groq/compound-mini`) for near-instant conversational RAG streaming (300+ tokens/sec) and executive summaries. Placed ahead of OpenAI in the priority chain (`gemini` -> `groq` -> `openai`, or configurable via `AI_PROVIDER_ORDER`).
+  - *Embedding Fallover*: Because Groq is strictly an inference provider and does not host vector embedding models, calls to `getEmbedding` or `getEmbeddingsBatch` immediately pass through to the next provider in the chain without blocking ingestion.
+- **`OpenAIService`**: Tertiary fallback implementation utilizing the official `openai` SDK with `gpt-4o-mini` for chat and summary generation and `text-embedding-3-small` for vector embeddings (configured with `dimensions: 768` to ensure vector dimensional compatibility with Gemini embeddings).
+- **`AIFactory` & `MultiProviderAIService`**: Factory and composite orchestrator that automatically routes requests through the configured provider chain and seamlessly catches rate-limit (`429`) or server-overload (`503`) errors, cascading from Gemini to Groq (for text generation/summaries) and onwards to OpenAI.
 - **Metadata Persistence**:
   - `document_chunks`: `aiVendor`, `aiModel`
   - `documents`: `summaryAiVendor`, `summaryAiModel`
@@ -560,8 +562,9 @@ Refactored AI interactions from a hardcoded single-provider Gemini implementatio
 
 ### The Alternatives
 1. **Single-provider Gemini-only implementation**: Retaining Gemini as the sole AI backend. Rejected due to Single Point of Failure (SPOF) risks when free/tier rate limits are reached or during provider outages.
-2. **Direct HTTP `fetch` to OpenAI API**: Avoid adding the `openai` npm dependency and handcraft REST calls. Rejected because the official `openai` SDK provides robust typings, built-in retry handling, and standard streaming chunk iterators.
-3. **Dedicated separate vector stores for each AI model**: Maintaining separate collections for Gemini and OpenAI vectors. Rejected as unnecessarily complex; using `dimensions: 768` for OpenAI's `text-embedding-3-small` allows uniform vector storage and cosine similarity scoring across the same datastore.
+2. **Placing OpenAI ahead of Groq**: Directing fallbacks to OpenAI first. Rejected because Groq provides a generous, zero-cost, high-speed inference tier ideal for mitigating costly commercial API spikes, whereas OpenAI accounts may suffer from zero-credit exhaustion.
+3. **Direct HTTP `fetch` to Groq and OpenAI APIs**: Avoid adding provider SDKs and handcraft REST calls. Rejected because official SDKs (`groq-sdk`, `openai`) provide robust typing, resilient connection pooling, and standardized streaming chunk iterators.
+4. **Dedicated separate vector stores for each AI model**: Maintaining separate collections for Gemini and OpenAI vectors. Rejected as unnecessarily complex; using `dimensions: 768` for OpenAI's `text-embedding-3-small` allows uniform vector storage and cosine similarity scoring across the same datastore.
 
 ### The Reasoning
-Relying solely on a single AI provider presents high availability risks, particularly under burst loads where rate limits (`429`) or temporary capacity constraints (`503`) can stall document ingestion and user queries. Introducing the Factory/Strategy pattern creates an extensible foundation where new providers (e.g. Anthropic, Mistral, Ollama) can be plugged in simply by subclassing `BaseAIService` and registering with `AIFactory`.
+Relying solely on a single AI provider presents severe availability risks, particularly under burst loads where rate limits (`429`) or temporary capacity constraints (`503`) stall document ingestion and user queries. Introducing Groq ahead of OpenAI provides high-throughput, near-instant streaming for conversation and document summaries with zero token billing costs. The Factory/Strategy architecture maintains strict separation of concerns, enabling new providers to be added or reordered with zero disruption to the core business logic.

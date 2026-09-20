@@ -10,7 +10,7 @@ import { HTTP_STATUS } from './http.js';
 import { ERROR_CODES } from './errors.js';
 import { PAGINATION } from './pagination.js';
 import { SSE_CONFIG } from './sse.js';
-import { AI_VENDORS, OPENAI_CONFIG, AI_ORCHESTRATION } from './ai.js';
+import { AI_VENDORS, GROQ_CONFIG, OPENAI_CONFIG, AI_ORCHESTRATION } from './ai.js';
 
 export const constant = {
   ENVS: {
@@ -40,6 +40,7 @@ export const constant = {
   PAGINATION,
   SSE_CONFIG,
   AI_VENDORS,
+  GROQ_CONFIG,
   OPENAI_CONFIG,
   AI_ORCHESTRATION,
 };
@@ -66,6 +67,7 @@ export {
   PAGINATION,
   SSE_CONFIG,
   AI_VENDORS,
+  GROQ_CONFIG,
   OPENAI_CONFIG,
   AI_ORCHESTRATION,
 };

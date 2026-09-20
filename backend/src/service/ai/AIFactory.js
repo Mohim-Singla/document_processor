@@ -1,6 +1,7 @@
 import { GeminiService } from './GeminiService.js';
+import { GroqService } from './GroqService.js';
 import { OpenAIService } from './OpenAIService.js';
-import { AI_VENDORS, constant } from '../../utils/constant/index.js';
+import { AI_VENDORS, constant, AI_ORCHESTRATION } from '../../utils/constant/index.js';
 import { logger } from '../../utils/logger.js';
 
 const CONTEXT = 'AIFactory';
@@ -19,6 +20,8 @@ export class AIFactory {
     switch (vendor?.toLowerCase()) {
     case AI_VENDORS.GEMINI:
       return new GeminiService(config.apiKey);
+    case AI_VENDORS.GROQ:
+      return new GroqService(config.apiKey);
     case AI_VENDORS.OPENAI:
       return new OpenAIService(config.apiKey);
     default:
@@ -29,7 +32,7 @@ export class AIFactory {
 
   /**
    * Discovers and instantiates available providers in prioritized order.
-   * Order can be customized via AI_PROVIDER_ORDER environment variable (e.g. "gemini,openai").
+   * Order can be customized via AI_PROVIDER_ORDER environment variable (default: "gemini,groq,openai").
    * @returns {import('./BaseAIService.js').BaseAIService[]}
    */
   static getAvailableProviders() {
@@ -37,7 +40,8 @@ export class AIFactory {
     const isTest = process.env.ENV === constant.ENVS.TEST;
 
     // Prioritized vendor order from env or default
-    const configuredOrder = (process.env.AI_PROVIDER_ORDER || `${AI_VENDORS.GEMINI},${AI_VENDORS.OPENAI}`)
+    const defaultOrder = AI_ORCHESTRATION.DEFAULT_PROVIDER_CHAIN.join(',');
+    const configuredOrder = (process.env.AI_PROVIDER_ORDER || defaultOrder)
       .split(',')
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
@@ -51,6 +55,12 @@ export class AIFactory {
         } else {
           logger.warn('GEMINI_API_KEY not found in environment; Gemini provider skipped in chain', CONTEXT, SUB_CONTEXT);
         }
+      } else if (vendor === AI_VENDORS.GROQ) {
+        if (process.env.GROQ_API_KEY || isTest) {
+          providers.push(new GroqService());
+        } else {
+          logger.warn('GROQ_API_KEY not found in environment; Groq provider skipped in chain', CONTEXT, SUB_CONTEXT);
+        }
       } else if (vendor === AI_VENDORS.OPENAI) {
         if (process.env.OPENAI_API_KEY || isTest) {
           providers.push(new OpenAIService());
@@ -61,7 +71,7 @@ export class AIFactory {
     }
 
     if (providers.length === 0 && !isTest) {
-      logger.critical('No AI providers configured! Ensure at least GEMINI_API_KEY or OPENAI_API_KEY is set', CONTEXT, SUB_CONTEXT);
+      logger.critical('No AI providers configured! Ensure at least GEMINI_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY is set', CONTEXT, SUB_CONTEXT);
     }
 
     logger.info('Initialized active AI provider chain', CONTEXT, SUB_CONTEXT, {

@@ -850,9 +850,11 @@ Cosine Similarity = (A · B) / (||A|| * ||B||)
 To eliminate Single Points of Failure (SPOF) and protect against provider rate limits (`429`), quota exhaustion, or service outages (`503`), all AI operations are managed through an extensible Factory and Strategy pattern architecture:
 - **Base Class (`BaseAIService`)**: Defines standard contracts for `getEmbedding`, `getEmbeddingsBatch`, `getEmbeddingsForChunks`, `generateDocumentSummary`, and `streamRagCompletion`.
 - **Concrete Providers**:
-  - `GeminiService`: Primary provider utilizing `@google/genai` with model cascade (`gemini-2.5-flash` -> `gemini-2.5-flash-lite` -> `gemini-1.5-flash`). Embeddings use `gemini-embedding-001` (768 dimensions).
-  - `OpenAIService`: Fallback provider utilizing the official `openai` SDK (`gpt-4o-mini`, `text-embedding-3-small` configured with `dimensions: 768` for dimensional compatibility).
-- **Factory & Orchestrator (`AIFactory`, `MultiProviderAIService`)**: Dynamically discovers available providers based on configured API keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`). Automatically cascades requests to subsequent providers when rate limits or server errors occur.
+  - `GeminiService`: Primary provider utilizing `@google/genai` with model cascade (`gemini-3.5-flash` -> `gemini-3.5-flash-lite` -> `gemini-2.5-flash`). Embeddings use `gemini-embedding-001` and `gemini-embedding-2`.
+  - `GroqService`: High-speed secondary fallback utilizing the official `groq-sdk` for document summaries and conversational chat completions (`openai/gpt-oss-120b`, `qwen/qwen3.8-27b`, `openai/gpt-oss-20b`, `groq/compound`, `groq/compound-mini`). Placed ahead of OpenAI in the cascade to leverage Groq's high-throughput, low-latency free inference.
+    - *Embedding Pass-Through*: Because Groq does not host vector embedding models, calls to `getEmbedding` and `getEmbeddingsBatch` immediately pass through to the next provider in the chain without blocking document ingestion or query vector search.
+  - `OpenAIService`: Tertiary fallback provider utilizing the official `openai` SDK (`gpt-4o-mini`, `text-embedding-3-small` configured with `dimensions: 768` for dimensional compatibility).
+- **Factory & Orchestrator (`AIFactory`, `MultiProviderAIService`)**: Dynamically discovers available providers based on configured API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`) and prioritization (`AI_PROVIDER_ORDER`, defaulting to `gemini` -> `groq` -> `openai`). Automatically cascades requests to subsequent providers when rate limits or server errors occur.
 - **Provider Metadata Tagging**:
   - `documents`: Persists `summaryAiVendor` and `summaryAiModel`.
   - `document_chunks`: Persists `aiVendor` and `aiModel` per chunk embedding.
@@ -921,5 +923,9 @@ When a session is marked as `ARCHIVED` (`session.status === 'ARCHIVED'`), the ba
 | `MAX_FILE_SIZE_MB` | Integer | No | `10` | Maximum allowable file size in megabytes for uploaded documents (configurable). |
 | `MAX_BATCH_FILE_COUNT` | Integer | No | `10` | Maximum allowable number of files per batch upload action (configurable). |
 | `GEMINI_API_KEY` | String | Yes | None | Google Cloud Gemini API key for embeddings and generation. |
-| `GEMINI_LLM_MODEL` | String | No | `gemini-2.5-flash` | Primary Gemini model identifier for conversational Q&A. |
+| `GEMINI_LLM_MODEL` | String | No | `gemini-3.5-flash` | Primary Gemini model identifier for conversational Q&A. |
 | `GEMINI_EMBEDDING_MODEL` | String | No | `gemini-embedding-001` | Gemini model identifier for text vector embeddings. |
+| `GROQ_API_KEY` | String | No | None | Groq API Key for high-speed secondary fallback inference. |
+| `GROQ_LLM_MODEL` | String | No | `openai/gpt-oss-120b` | Groq model identifier for streaming RAG completions. |
+| `OPENAI_API_KEY` | String | No | None | OpenAI API Key for tertiary fallback chat and embeddings. |
+| `AI_PROVIDER_ORDER` | String | No | `gemini,groq,openai` | Prioritized provider chain sequence for AI orchestration. |

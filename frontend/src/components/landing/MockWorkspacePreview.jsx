@@ -132,7 +132,7 @@ export default function MockWorkspacePreview({ onOpenAuth }) {
                 <div className="flex items-center gap-2 text-indigo-400 font-semibold text-[11px]">
                   <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
                   <span>Synthesized Answer</span>
-                  <span className="text-[10px] text-slate-400 font-normal ml-auto">Gemini 3.5 Flash</span>
+                  <span className="text-[10px] text-indigo-400/80 font-medium ml-auto bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-800/40">Multi-Model RAG</span>
                 </div>
 
                 <p className="text-xs leading-relaxed text-slate-300">

@@ -6,8 +6,8 @@ import { logger } from '../../utils/logger.js';
 const CONTEXT = 'GeminiService';
 
 export class GeminiService extends BaseAIService {
-  constructor(apiKey) {
-    super(AI_VENDORS.GEMINI);
+  constructor(apiKey, vendorName = AI_VENDORS.GEMINI) {
+    super(vendorName);
     this.apiKey = apiKey || process.env.GEMINI_API_KEY || '';
     this.aiInstance = null;
   }

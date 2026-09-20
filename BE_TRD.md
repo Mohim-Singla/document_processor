@@ -923,9 +923,10 @@ When a session is marked as `ARCHIVED` (`session.status === 'ARCHIVED'`), the ba
 | `MAX_FILE_SIZE_MB` | Integer | No | `10` | Maximum allowable file size in megabytes for uploaded documents (configurable). |
 | `MAX_BATCH_FILE_COUNT` | Integer | No | `5` | Maximum allowable number of files per batch upload action (configurable). |
 | `GEMINI_API_KEY` | String | Yes | None | Google Cloud Gemini API key for embeddings and generation. |
+| `GEMINI_API_KEY_2` | String | No | None | Secondary Google Cloud Gemini API key for redundant quota pool fallback. |
 | `GEMINI_LLM_MODEL` | String | No | `gemini-3.5-flash` | Primary Gemini model identifier for conversational Q&A. |
 | `GEMINI_EMBEDDING_MODEL` | String | No | `gemini-embedding-001` | Gemini model identifier for text vector embeddings. |
 | `GROQ_API_KEY` | String | No | None | Groq API Key for high-speed secondary fallback inference. |
 | `GROQ_LLM_MODEL` | String | No | `openai/gpt-oss-120b` | Groq model identifier for streaming RAG completions. |
 | `OPENAI_API_KEY` | String | No | None | OpenAI API Key for tertiary fallback chat and embeddings. |
-| `AI_PROVIDER_ORDER` | String | No | `gemini,groq,openai` | Prioritized provider chain sequence for AI orchestration. |
+| `AI_PROVIDER_ORDER` | String | No | `gemini,gemini_2,groq,openai` | Prioritized provider chain sequence for AI orchestration. |

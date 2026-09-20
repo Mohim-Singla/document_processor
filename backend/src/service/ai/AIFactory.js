@@ -19,7 +19,9 @@ export class AIFactory {
   static createProvider(vendor, config = {}) {
     switch (vendor?.toLowerCase()) {
     case AI_VENDORS.GEMINI:
-      return new GeminiService(config.apiKey);
+      return new GeminiService(config.apiKey, AI_VENDORS.GEMINI);
+    case AI_VENDORS.GEMINI_2:
+      return new GeminiService(config.apiKey || process.env.GEMINI_API_KEY_2, AI_VENDORS.GEMINI_2);
     case AI_VENDORS.GROQ:
       return new GroqService(config.apiKey);
     case AI_VENDORS.OPENAI:
@@ -32,7 +34,7 @@ export class AIFactory {
 
   /**
    * Discovers and instantiates available providers in prioritized order.
-   * Order can be customized via AI_PROVIDER_ORDER environment variable (default: "gemini,groq,openai").
+   * Order can be customized via AI_PROVIDER_ORDER environment variable (default: "gemini,gemini_2,groq,openai").
    * @returns {import('./BaseAIService.js').BaseAIService[]}
    */
   static getAvailableProviders() {
@@ -51,9 +53,15 @@ export class AIFactory {
     for (const vendor of configuredOrder) {
       if (vendor === AI_VENDORS.GEMINI) {
         if (process.env.GEMINI_API_KEY || isTest) {
-          providers.push(new GeminiService());
+          providers.push(new GeminiService(process.env.GEMINI_API_KEY, AI_VENDORS.GEMINI));
         } else {
           logger.warn('GEMINI_API_KEY not found in environment; Gemini provider skipped in chain', CONTEXT, SUB_CONTEXT);
+        }
+      } else if (vendor === AI_VENDORS.GEMINI_2) {
+        if (process.env.GEMINI_API_KEY_2 || isTest) {
+          providers.push(new GeminiService(process.env.GEMINI_API_KEY_2, AI_VENDORS.GEMINI_2));
+        } else {
+          logger.warn('GEMINI_API_KEY_2 not found in environment; Gemini_2 provider skipped in chain', CONTEXT, SUB_CONTEXT);
         }
       } else if (vendor === AI_VENDORS.GROQ) {
         if (process.env.GROQ_API_KEY || isTest) {

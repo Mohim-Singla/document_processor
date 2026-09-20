@@ -10,7 +10,7 @@ A production-grade, multi-tenant document processing and conversational RAG (Ret
   * `backend/`: Node.js / Express.js ESM REST API & asynchronous background worker (`worker.js`).
   * `frontend/`: React 19 / Vite / Tailwind CSS single-page workspace application.
 * **Datastore**: MongoDB (via Mongoose ODM) for users, sessions, documents, document chunks, and chat messages.
-* **AI & Embeddings**: Google Gemini API (`gemini-3.5-flash` for conversational completions, `gemini-embedding-001` for 768-dimensional contextual vector embeddings).
+* **AI & Embeddings**: Multi-Provider Orchestrator with automated failover across Google Gemini, Groq, and OpenAI (`gemini-3.5-flash` / `gemini-embedding-2` for 768-dimensional vector embeddings, Groq for fast LLM inference, and OpenAI as optional fallback).
 * **Storage & Queueing**: AWS S3 for raw document storage; AWS SQS for asynchronous worker ingestion with automated in-process fallback.
 
 ---
@@ -22,7 +22,7 @@ Before setting up the project locally, ensure you have the following installed:
 1. **Node.js**: `v20.x` or higher
 2. **npm**: `v10.x` or higher
 3. **MongoDB**: A running local instance (`mongodb://127.0.0.1:27017`) or a MongoDB Atlas connection string.
-4. **Google Gemini API Key**: API key from [Google AI Studio](https://aistudio.google.com/).
+4. **AI Provider API Key**: At least one API key from [Google AI Studio](https://aistudio.google.com/), [Groq Cloud](https://console.groq.com/), or [OpenAI](https://platform.openai.com/).
 5. **AWS S3 & SQS (Optional for local dev)**: S3 bucket and credentials. If SQS is not configured, the backend automatically runs in **in-process fallback mode**.
 
 ---
@@ -50,62 +50,28 @@ npm install
 
 #### Backend Configuration (`backend/.env`)
 
-Create a `.env` file in the `backend/` directory based on `backend/.env.example`:
+Copy `backend/.env.example` to create your local `.env`:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Populate the required configuration values in `backend/.env`:
+Open `backend/.env` and supply your actual keys/credentials. Refer directly to [`backend/.env.example`](backend/.env.example) for the full list of required settings (MongoDB, AWS, JWT, and AI keys) and customizable `#optional` overrides (such as `AI_PROVIDER_ORDER`, model candidate names, and file upload limits).
 
-```env
-# Application Environment
-ENV=development
-PORT=8000
-
-# MongoDB Configuration
-MONGO_HOST_IP=127.0.0.1:27017
-MONGO_DATABASE=document_processor
-MONGO_USER=
-MONGO_PASSWORD=
-MONGO_SRV_FLAG=false
-
-# JWT Authentication
-JWT_SECRET=your_super_secret_jwt_key_here
-JWT_EXPIRES_IN=7d
-
-# Google Gemini API
-GEMINI_API_KEY=AIzaSyYourGeminiApiKeyHere
-GEMINI_LLM_MODEL=gemini-3.5-flash
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-
-# AWS Configuration (S3 & SQS)
-AWS_REGION=ap-south-1
-AWS_ACCOUNT_ID=123456789012
-AWS_ACCESS_KEY_ID=your_aws_access_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key
-AWS_S3_BUCKET_NAME=your-document-storage-bucket
-AWS_SQS_REGION_DEFAULT=ap-south-1
-```
-
-> **Note on Local Development Without SQS**:
-> If AWS SQS is unavailable, the application gracefully catches queue failures and executes document parsing, OCR, and embedding in the background event loop via `setImmediate`.
+> **Note on Local Development Without AWS**:
+> If AWS SQS is not configured, the application automatically runs in **in-process fallback mode** (executing parsing, OCR, and embedding via the local event loop).
 
 ---
 
 #### Frontend Configuration (`frontend/.env`)
 
-Create a `.env` file in the `frontend/` directory based on `frontend/.env.example`:
+Copy `frontend/.env.example` to create your local `.env`:
 
 ```bash
 cp frontend/.env.example frontend/.env
 ```
 
-Configure the API base URL:
-
-```env
-VITE_API_BASE_URL=http://localhost:8000/v1
-```
+Refer to [`frontend/.env.example`](frontend/.env.example) to configure the API base URL (defaults to `http://localhost:8000`).
 
 ---
 

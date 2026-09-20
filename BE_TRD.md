@@ -103,6 +103,8 @@ erDiagram
         enum status "QUEUED, PROCESSING, READY, FAILED"
         int pageCount "Detected Pages"
         string summary "AI Generated Summary"
+        string summaryAiVendor "Summary AI Vendor (gemini, openai)"
+        string summaryAiModel "Summary AI Model Identifier"
         string errorMessage "Nullable Error Text"
         boolean isDeleted "Indexed"
         datetime deletedAt "Nullable Timestamp"
@@ -118,7 +120,9 @@ erDiagram
         int pageNumber "1-Indexed Page Number"
         int chunkIndex "0-Indexed Chunk Sequence"
         string content "Extracted Text Chunk"
-        array embedding "Vector Float[3072]"
+        array embedding "Vector Float[768]"
+        string aiVendor "AI Vendor (gemini, openai)"
+        string aiModel "AI Embedding Model Identifier"
         object metadata "Character Length & Filename"
         boolean isDeleted "Indexed"
         datetime deletedAt "Nullable Timestamp"
@@ -132,6 +136,8 @@ erDiagram
         string userId FK "Indexed, Owner Scope"
         enum sender "USER, ASSISTANT"
         string content "Message Body"
+        string aiVendor "AI Vendor (gemini, openai)"
+        string aiModel "AI Model Identifier"
         array citations "Source Passages Array"
         datetime timestamp "Creation Timestamp"
         boolean isDeleted "Indexed"
@@ -182,6 +188,8 @@ erDiagram
   - `status` (String, Enum: `['QUEUED', 'PROCESSING', 'READY', 'FAILED']`, Default: `'QUEUED'`, Indexed)
   - `pageCount` (Number, Default: 0)
   - `summary` (String, Nullable, Default: `null`)
+  - `summaryAiVendor` (String, Nullable, Default: `null`, e.g. `'gemini'`, `'openai'`, not indexed)
+  - `summaryAiModel` (String, Nullable, Default: `null`, e.g. `'gemini-2.5-flash'`, `'gpt-4o-mini'`)
   - `errorMessage` (String, Nullable, Default: `null`)
   - `isDeleted` (Boolean, Default: `false`, Indexed)
   - `deletedAt` (Date, Nullable, Default: `null`)
@@ -197,7 +205,9 @@ erDiagram
   - `chunkIndex` (Number, Required)
   - `content` (String, Required)
   - `metadata`: `{ charLength: Number, fileName: String }`
-  - `embedding` (Array of Numbers, 3072 dimensions)
+  - `embedding` (Array of Numbers, 768 dimensions)
+  - `aiVendor` (String, Nullable, Default: `null`, e.g. `'gemini'`, `'openai'`, not indexed)
+  - `aiModel` (String, Nullable, Default: `null`, e.g. `'gemini-embedding-001'`, `'text-embedding-3-small'`)
   - `isDeleted` (Boolean, Default: `false`, Indexed)
   - `deletedAt` (Date, Nullable, Default: `null`)
 - **Indexes**:
@@ -210,6 +220,8 @@ erDiagram
 - **Attributes**:
   - `sender` (String, Enum: `['USER', 'ASSISTANT']`, Required)
   - `content` (String, Required)
+  - `aiVendor` (String, Nullable, Default: `null`, e.g. `'gemini'`, `'openai'`, not indexed)
+  - `aiModel` (String, Nullable, Default: `null`, e.g. `'gemini-2.5-flash'`, `'gpt-4o-mini'`)
   - `citations`: Array of Objects:
     - `documentId` (String)
     - `fileName` (String)
@@ -546,7 +558,7 @@ Authorization: Bearer <signed_jwt_token>
 - **Request Headers**:
   - `Content-Type: multipart/form-data`
 - **Request Payload**:
-  - Field name: `files` (array of multipart file buffers; configurable thresholds with initial defaults: max 10 MB per file, max 10 files per batch).
+  - Field name: `files` (array of multipart file buffers; configurable thresholds with initial defaults: max 10 MB per file, max 5 files per batch).
   - Allowed file formats:
     - Documents: PDF (`application/pdf`), Word DOCX (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`)
     - Plaintext & Markdown: TXT (`text/plain`), MD (`text/markdown`, `text/x-markdown`, `.md`, `.markdown`)
@@ -834,10 +846,20 @@ Cosine Similarity = (A · B) / (||A|| * ||B||)
 - **Sliding History Window**: RAG completions retrieve the last 6 messages (`CHAT_HISTORY_MESSAGE_LIMIT: 6`) for the active session and user.
 - **Dialogue Injection**: Prior turns (`User: ...` / `Assistant: ...`) are injected before the current user question, maintaining pronoun reference resolution and conversational coherence.
 
-### 6.5 Model Fallback Cascade
-To safeguard against rate limits or service degradation, LLM calls cascade through multiple model configurations:
-1. Primary: `gemini-3.5-flash`
-2. Fallback: `gemini-3.5-flash-lite`, `gemini-3.6-flash`
+### 6.5 Multi-Provider AI Architecture & Model Fallback Cascade
+To eliminate Single Points of Failure (SPOF) and protect against provider rate limits (`429`), quota exhaustion, or service outages (`503`), all AI operations are managed through an extensible Factory and Strategy pattern architecture:
+- **Base Class (`BaseAIService`)**: Defines standard contracts for `getEmbedding`, `getEmbeddingsBatch`, `getEmbeddingsForChunks`, `generateDocumentSummary`, and `streamRagCompletion`.
+- **Concrete Providers**:
+  - `GeminiService`: Primary provider utilizing `@google/genai` with model cascade (`gemini-3.5-flash` -> `gemini-3.5-flash-lite` -> `gemini-2.5-flash`). Embeddings use `gemini-embedding-001` and `gemini-embedding-2`.
+  - `GroqService`: High-speed secondary fallback utilizing the official `groq-sdk` for document summaries and conversational chat completions (`openai/gpt-oss-120b`, `qwen/qwen3.8-27b`, `openai/gpt-oss-20b`, `groq/compound`, `groq/compound-mini`). Placed ahead of OpenAI in the cascade to leverage Groq's high-throughput, low-latency free inference.
+    - *Embedding Pass-Through*: Because Groq does not host vector embedding models, calls to `getEmbedding` and `getEmbeddingsBatch` immediately pass through to the next provider in the chain without blocking document ingestion or query vector search.
+  - `OpenAIService`: Tertiary fallback provider utilizing the official `openai` SDK (`gpt-4o-mini`, `text-embedding-3-small` configured with `dimensions: 768` for dimensional compatibility).
+- **Factory & Orchestrator (`AIFactory`, `MultiProviderAIService`)**: Dynamically discovers available providers based on configured API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`) and prioritization (`AI_PROVIDER_ORDER`, defaulting to `gemini` -> `groq` -> `openai`). Automatically cascades requests to subsequent providers when rate limits or server errors occur.
+- **Provider Metadata Tagging**:
+  - `documents`: Persists `summaryAiVendor` and `summaryAiModel`.
+  - `document_chunks`: Persists `aiVendor` and `aiModel` per chunk embedding.
+  - `chat_messages`: Persists `aiVendor` and `aiModel` for generated assistant responses.
+  - *Note*: Fields are unindexed as queries do not filter by vendor.
 
 ---
 
@@ -899,7 +921,11 @@ When a session is marked as `ARCHIVED` (`session.status === 'ARCHIVED'`), the ba
 | `AWS_SQS_WAIT_TIME_SECONDS` | Integer | No | `20` | Duration (seconds) for SQS long-polling wait time (max 20s). |
 | `AWS_SQS_POLLING_WAIT_TIME_MS` | Integer | No | `1000` | Delay (milliseconds) to wait before repolling the queue (1s throttle). |
 | `MAX_FILE_SIZE_MB` | Integer | No | `10` | Maximum allowable file size in megabytes for uploaded documents (configurable). |
-| `MAX_BATCH_FILE_COUNT` | Integer | No | `10` | Maximum allowable number of files per batch upload action (configurable). |
+| `MAX_BATCH_FILE_COUNT` | Integer | No | `5` | Maximum allowable number of files per batch upload action (configurable). |
 | `GEMINI_API_KEY` | String | Yes | None | Google Cloud Gemini API key for embeddings and generation. |
-| `GEMINI_LLM_MODEL` | String | No | `gemini-2.5-flash` | Primary Gemini model identifier for conversational Q&A. |
+| `GEMINI_LLM_MODEL` | String | No | `gemini-3.5-flash` | Primary Gemini model identifier for conversational Q&A. |
 | `GEMINI_EMBEDDING_MODEL` | String | No | `gemini-embedding-001` | Gemini model identifier for text vector embeddings. |
+| `GROQ_API_KEY` | String | No | None | Groq API Key for high-speed secondary fallback inference. |
+| `GROQ_LLM_MODEL` | String | No | `openai/gpt-oss-120b` | Groq model identifier for streaming RAG completions. |
+| `OPENAI_API_KEY` | String | No | None | OpenAI API Key for tertiary fallback chat and embeddings. |
+| `AI_PROVIDER_ORDER` | String | No | `gemini,groq,openai` | Prioritized provider chain sequence for AI orchestration. |

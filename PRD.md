@@ -108,7 +108,7 @@ journey
   - *(Excludes executable code files like .py, .js, .ts, .sh, .sql)*
 - **Ingestion Limits**:
   - File size: Up to 10 MB per file (initial default, configurable)
-  - Batch upload: Up to 10 files per upload action (initial default, configurable)
+  - Batch upload: Up to 5 files per upload action (initial default, configurable)
   - Visual validation alerts displayed when limits are exceeded
 - **Dropzone Interaction Isolation**: Key press events on the upload dropzone are suppressed to avoid accidental file-picker dialog re-openings during keyboard-driven navigation.
 - **Real-Time Processing Status**: Each document displays its current ingestion status:
@@ -170,6 +170,7 @@ journey
 ### 6.4 Reliability & Resilience
 - Graceful handling of network interruptions with automatic session state recovery.
 - Resilient document ingestion with retry capabilities for transient processing failures.
+- **Multi-Provider AI Resilience**: Zero-downtime conversational query and summary fallbacks across a redundant provider chain (Google Gemini, Groq high-speed inference, and OpenAI), ensuring continuity even during third-party rate limits or vendor service outages.
 
 ---
 
@@ -177,10 +178,10 @@ journey
 
 ### 7.1 In Scope for Version 1
 - Single-user workspace authentication and personal management.
-- Multi-document upload (PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, and images) with configurable thresholds (initial defaults: up to 10 MB per file, max 10 files per batch).
+- Multi-document upload (PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, and images) with configurable thresholds (initial defaults: up to 10 MB per file, max 5 files per batch).
 - Real-time document status tracking with one-click retry on ingestion failure.
 - In-app document preview with AI-generated executive summaries, graceful multi-format rendering, and original file download option.
-- Conversational querying with real-time answer streaming.
+- Conversational querying with real-time answer streaming powered by a resilient multi-provider AI chain (Gemini, Groq, OpenAI).
 - Exact inline citations, source passage inspection drawer, and document verification.
 - Workspace archiving, restoring, and deletion with state preservation across browser refreshes.
 

@@ -1,7 +1,7 @@
 import { mongoRepositories } from '../../db/mongo/repository/index.js';
 import { s3Service } from '../../service/s3Service.js';
 import { parsingService } from '../../service/parsingService.js';
-import { geminiService } from '../../service/geminiService.js';
+import { aiService } from '../../service/aiService.js';
 import { DOCUMENT_STATUS } from '../../utils/constant/status.js';
 import { logger } from '../../utils/logger.js';
 
@@ -12,7 +12,7 @@ const CONTEXT = 'documentConsumer';
  * 1. Uses provided in-memory buffer or downloads from S3 using s3Key
  * 2. Parses/OCRs document into chunks
  * 3. Generates high-level document summary
- * 4. Calculates contextualized vector embeddings via Gemini
+ * 4. Calculates contextualized vector embeddings via multi-provider AI service
  * 5. Saves document_chunks to MongoDB
  * 6. Updates document status to READY
  *
@@ -67,10 +67,13 @@ export async function processDocumentJob({ documentId, sessionId, userId, s3Key,
     logger.info('Document parsed successfully', CONTEXT, SUB_CONTEXT, { documentId, chunkCount: chunks.length, pageCount });
 
     // 3. Generate high-level summary first so chunk embeddings can be contextualized
-    const summary = await geminiService.generateDocumentSummary(rawText);
+    const summaryResult = await aiService.generateDocumentSummary(rawText);
+    const summary = summaryResult?.summary || '';
+    const summaryAiVendor = summaryResult?.aiVendor || null;
+    const summaryAiModel = summaryResult?.aiModel || null;
 
     // 4. Compute chunk embeddings contextualized with document summary and fileName
-    await geminiService.getEmbeddingsForChunks(chunks, userId, {
+    await aiService.getEmbeddingsForChunks(chunks, userId, {
       summary,
       fileName,
     });
@@ -91,10 +94,17 @@ export async function processDocumentJob({ documentId, sessionId, userId, s3Key,
       await mongoRepositories.documentChunks.bulkInsert(chunks);
     }
 
-    // 7. Update document status to READY and persist summary
+    // 7. Update document status to READY and persist summary with AI vendor/model metadata
     await mongoRepositories.documents.update(
       { documentId, userId },
-      { status: DOCUMENT_STATUS.READY, pageCount, summary, errorMessage: null }
+      {
+        status: DOCUMENT_STATUS.READY,
+        pageCount,
+        summary,
+        summaryAiVendor,
+        summaryAiModel,
+        errorMessage: null,
+      }
     );
 
     logger.info('Document processing job completed successfully', CONTEXT, SUB_CONTEXT, {
@@ -102,6 +112,8 @@ export async function processDocumentJob({ documentId, sessionId, userId, s3Key,
       status: DOCUMENT_STATUS.READY,
       chunkCount: chunks.length,
       hasSummary: Boolean(summary),
+      summaryAiVendor,
+      summaryAiModel,
     });
 
     return true;

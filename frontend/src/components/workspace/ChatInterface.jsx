@@ -84,7 +84,7 @@ export default function ChatInterface({
             </div>
             <h4 className="text-sm font-semibold text-slate-300">Ask Anything About Your Documents</h4>
             <p className="text-xs text-slate-500 max-w-sm mt-1">
-              Google Gemini Pro will analyze your uploaded files, retrieve relevant snippets, and synthesize answers with citations.
+              Ask questions to synthesize answers from your uploaded files, retrieve relevant snippets, and verify findings with citations.
             </p>
           </div>
         )}
@@ -177,7 +177,7 @@ export default function ChatInterface({
               </div>
               <div className="mt-2 flex items-center gap-1.5 text-[10px] text-indigo-400 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
-                Gemini Pro is typing...
+                AI Assistant is typing...
               </div>
             </div>
           </div>

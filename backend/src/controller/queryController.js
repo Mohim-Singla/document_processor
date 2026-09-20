@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { mongoRepositories } from '../db/mongo/repository/index.js';
 import { ragService } from '../service/ragService.js';
-import { geminiService } from '../service/geminiService.js';
+import { aiService } from '../service/aiService.js';
 import { MESSAGE_SENDER, SESSION_STATUS, HTTP_STATUS, ERROR_CODES, RAG_CONFIG, SSE_CONFIG, GEMINI_CONFIG } from '../utils/constant/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -97,15 +97,22 @@ export async function querySession(req, res) {
       res.setHeader('Connection', SSE_CONFIG.HEADERS.CONNECTION);
 
       let fullAssistantReply = '';
+      let replyAiVendor = null;
+      let replyAiModel = null;
 
       logger.info('Initiating LLM stream response', CONTEXT, SUB_CONTEXT, { sessionId, historyCount: priorChatHistory.length });
-      const generator = geminiService.streamRagCompletion({
+      const generator = aiService.streamRagCompletion({
         prompt,
         contextChunks: relevantChunks,
         chatHistory: priorChatHistory,
       });
 
-      for await (const token of generator) {
+      for await (const chunk of generator) {
+        const token = typeof chunk === 'object' && chunk !== null && 'token' in chunk ? chunk.token : chunk;
+        if (typeof chunk === 'object' && chunk !== null) {
+          if (chunk.aiVendor) replyAiVendor = chunk.aiVendor;
+          if (chunk.aiModel) replyAiModel = chunk.aiModel;
+        }
         fullAssistantReply += token;
         res.write(`data: ${JSON.stringify({ type: SSE_CONFIG.EVENT_TYPES.TOKEN, content: token })}\n\n`);
       }
@@ -117,7 +124,7 @@ export async function querySession(req, res) {
       res.write(SSE_CONFIG.DONE_MESSAGE);
       res.end();
 
-      // Record assistant message with citations and owner userId
+      // Record assistant message with citations, owner userId, and AI vendor/model
       await mongoRepositories.chatMessages.create({
         messageId: uuidv4(),
         sessionId,
@@ -125,17 +132,33 @@ export async function querySession(req, res) {
         sender: MESSAGE_SENDER.ASSISTANT,
         content: fullAssistantReply,
         citations,
+        aiVendor: replyAiVendor,
+        aiModel: replyAiModel,
       });
 
-      logger.info('Streaming query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId, replyLength: fullAssistantReply.length, citationCount: citations.length });
+      logger.info('Streaming query completed successfully', CONTEXT, SUB_CONTEXT, {
+        sessionId,
+        replyLength: fullAssistantReply.length,
+        citationCount: citations.length,
+        aiVendor: replyAiVendor,
+        aiModel: replyAiModel,
+      });
     } else {
       let fullAssistantReply = '';
-      const generator = geminiService.streamRagCompletion({
+      let replyAiVendor = null;
+      let replyAiModel = null;
+
+      const generator = aiService.streamRagCompletion({
         prompt,
         contextChunks: relevantChunks,
         chatHistory: priorChatHistory,
       });
-      for await (const token of generator) {
+      for await (const chunk of generator) {
+        const token = typeof chunk === 'object' && chunk !== null && 'token' in chunk ? chunk.token : chunk;
+        if (typeof chunk === 'object' && chunk !== null) {
+          if (chunk.aiVendor) replyAiVendor = chunk.aiVendor;
+          if (chunk.aiModel) replyAiModel = chunk.aiModel;
+        }
         fullAssistantReply += token;
       }
 
@@ -148,12 +171,21 @@ export async function querySession(req, res) {
         sender: MESSAGE_SENDER.ASSISTANT,
         content: fullAssistantReply,
         citations,
+        aiVendor: replyAiVendor,
+        aiModel: replyAiModel,
       });
 
-      logger.info('Synchronous query completed successfully', CONTEXT, SUB_CONTEXT, { sessionId, citationCount: citations.length });
+      logger.info('Synchronous query completed successfully', CONTEXT, SUB_CONTEXT, {
+        sessionId,
+        citationCount: citations.length,
+        aiVendor: replyAiVendor,
+        aiModel: replyAiModel,
+      });
       return res.success('Query successful', {
         answer: fullAssistantReply,
         citations,
+        aiVendor: replyAiVendor,
+        aiModel: replyAiModel,
       });
     }
   } catch (error) {

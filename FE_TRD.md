@@ -110,7 +110,7 @@ graph TD
 #### 5. Document Dropzone (`src/components/workspace/DocumentDropzone.jsx`)
 - **Role**: Drag-and-drop file ingestion zone.
 - **Key Responsibilities**:
-  - Enforces client-side validation using configurable thresholds (initial defaults: max 10 MB per file, max 10 files per batch) along with allowed MIME types (PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, and common images).
+  - Enforces client-side validation using configurable thresholds (initial defaults: max 10 MB per file, max 5 files per batch) along with allowed MIME types (PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, and common images).
   - Configures `noKeyboard: true`, `tabIndex: -1`, and event suppression on the dropzone root (`data-dropzone="true"`) to prevent unintended file-picker popups or conflicting event propagation when users navigate or press keys in the workspace.
   - Displays visual validation alerts when limits or unsupported file types are rejected.
   - Emits selected files to the parent upload handler with instant visual drop feedback.

@@ -9,11 +9,20 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
     async (acceptedFiles, fileRejections) => {
       setErrorMsg('');
       if (fileRejections.length > 0) {
-        setErrorMsg('Some files were rejected. Supported formats: PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, or images (max 10MB each).');
+        const hasTooMany = fileRejections.some((r) => r.errors?.some((e) => e.code === 'too-many-files'));
+        if (hasTooMany) {
+          setErrorMsg('Maximum 5 files can be uploaded at once.');
+          return;
+        }
+        setErrorMsg('Some files were rejected. Supported formats: PDF, DOCX, TXT, MD, CSV, TSV, JSON, XML, HTML, YAML, LOG, or images (max 5 files, 10MB each).');
         return;
       }
 
       if (acceptedFiles.length > 0) {
+        if (acceptedFiles.length > 5) {
+          setErrorMsg('Maximum 5 files can be uploaded at once.');
+          return;
+        }
         try {
           await onUpload(acceptedFiles);
         } catch (err) {
@@ -29,6 +38,7 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
     noKeyboard: true,
     disabled: isUploading,
     maxSize: 10 * 1024 * 1024, // 10 MB
+    maxFiles: 5,
     accept: {
       'application/pdf': ['.pdf'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
@@ -79,10 +89,10 @@ export default function DocumentDropzone({ onUpload, isUploading }) {
           <UploadCloud className="w-6 h-6 animate-pulse" />
         </div>
         <p className="text-xs font-semibold text-slate-200">
-          {isDragActive ? 'Drop documents here...' : 'Click or drop documents to upload'}
+          {isDragActive ? 'Drop documents here (max 5)...' : 'Click or drop documents to upload'}
         </p>
         <p className="text-[11px] text-slate-500 mt-1">
-          PDF, DOCX, TXT, MD, CSV, JSON, XML, YAML, HTML, LOG, Images (up to 25MB)
+          PDF, DOCX, TXT, MD, CSV, JSON, XML, YAML, HTML, LOG, Images (max 5 files, up to 10MB each)
         </p>
         {isUploading && (
           <div className="mt-3 flex items-center gap-2 text-xs text-indigo-400">

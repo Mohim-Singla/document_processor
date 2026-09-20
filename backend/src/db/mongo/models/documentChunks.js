@@ -14,6 +14,8 @@ const schema = new mongoose.Schema({
     hasTable: Boolean,
   },
   embedding: { type: [Number], default: [] },
+  aiVendor: { type: String, default: null },
+  aiModel: { type: String, default: null },
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null },
 }, { timestamps: true });

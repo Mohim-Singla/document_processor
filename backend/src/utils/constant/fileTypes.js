@@ -49,8 +49,8 @@ export const ALLOWED_FILE_EXTENSIONS = new Set([
 ]);
 
 export const UPLOAD_LIMITS = {
-  MAX_FILE_SIZE_BYTES: 10 * 1024 * 1024, // 10 MB
-  MAX_FILES: 5,
+  MAX_FILE_SIZE_BYTES: (parseInt(process.env.MAX_FILE_SIZE_MB, 10) || 10) * 1024 * 1024, // Default: 10 MB
+  MAX_FILES: parseInt(process.env.MAX_BATCH_FILE_COUNT, 10) || 5, // Default: 5 files
 };
 
 export const TEXT_FILE_EXTENSIONS = new Set([

@@ -4,17 +4,16 @@ import { SESSION_STATUS } from '../../../utils/constant/status.js';
 const schema = new mongoose.Schema(
   {
     sessionId: { type: String, required: true, unique: true },
-    userId: { type: String, default: null, index: true },
+    userId: { type: String, default: null },
     title: { type: String, required: true },
     description: { type: String, default: null },
     status: {
       type: String,
       enum: Object.values(SESSION_STATUS),
       default: SESSION_STATUS.ACTIVE,
-      index: true,
     },
     documentCount: { type: Number, default: 0 },
-    isDeleted: { type: Boolean, default: false, index: true },
+    isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }

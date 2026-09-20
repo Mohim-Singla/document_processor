@@ -4,7 +4,7 @@ import { MESSAGE_SENDER } from '../../../utils/constant/status.js';
 const schema = new mongoose.Schema({
   messageId: { type: String, required: true, unique: true },
   sessionId: { type: String, required: true, index: true },
-  userId: { type: String, default: null, index: true },
+  userId: { type: String, default: null },
   sender: { type: String, enum: Object.values(MESSAGE_SENDER), required: true },
   content: { type: String, required: true },
   citations: [
@@ -16,7 +16,7 @@ const schema = new mongoose.Schema({
       score: Number,
     },
   ],
-  isDeleted: { type: Boolean, default: false, index: true },
+  isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 

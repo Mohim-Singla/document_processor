@@ -5,7 +5,7 @@ const schema = new mongoose.Schema(
   {
     documentId: { type: String, required: true, unique: true },
     sessionId: { type: String, required: true, index: true },
-    userId: { type: String, default: null, index: true },
+    userId: { type: String, default: null },
     fileName: { type: String, required: true },
     mimeType: { type: String, required: true },
     fileSize: { type: Number, required: true },
@@ -15,12 +15,11 @@ const schema = new mongoose.Schema(
       type: String,
       enum: Object.values(DOCUMENT_STATUS),
       default: DOCUMENT_STATUS.QUEUED,
-      index: true,
     },
     pageCount: { type: Number, default: 0 },
     summary: { type: String, default: null },
     errorMessage: { type: String, default: null },
-    isDeleted: { type: Boolean, default: false, index: true },
+    isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }

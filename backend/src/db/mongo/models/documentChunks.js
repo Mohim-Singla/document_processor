@@ -2,9 +2,9 @@ import mongoose from 'mongoose';
 
 const schema = new mongoose.Schema({
   chunkId: { type: String, required: true, unique: true },
-  documentId: { type: String, required: true, index: true },
-  sessionId: { type: String, required: true, index: true },
-  userId: { type: String, default: null, index: true },
+  documentId: { type: String, required: true },
+  sessionId: { type: String, required: true },
+  userId: { type: String, default: null },
   pageNumber: { type: Number, default: 1 },
   chunkIndex: { type: Number, required: true },
   content: { type: String, required: true },
@@ -14,7 +14,7 @@ const schema = new mongoose.Schema({
     hasTable: Boolean,
   },
   embedding: { type: [Number], default: [] },
-  isDeleted: { type: Boolean, default: false, index: true },
+  isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 

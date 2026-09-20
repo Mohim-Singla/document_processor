@@ -29,6 +29,7 @@ It captures the actual calls made under ambiguity and time constraints, the alte
 19. [Public Landing Page: Conversion-Focused Onboarding vs. Raw Login Wall](#19-public-landing-page-conversion-focused-onboarding-vs-raw-login-wall)
 20. [Non-Code Text & Structured Data Ingestion Expansion](#20-non-code-text--structured-data-ingestion-expansion)
 21. [Login API Latency Optimization](#21-login-api-latency-optimization)
+22. [Multi-Provider AI Architecture: Factory & Strategy Fallback Pattern](#22-multi-provider-ai-architecture-factory--strategy-fallback-pattern)
 
 ---
 
@@ -541,4 +542,26 @@ The ingestion pipeline's text-extraction architecture inherently decodes non-bin
 ### The Decision
 The `/login` API latency on production was significantly higher (~200ms) compared to all other endpoints running within 30–40ms. After benchmarking, the bottleneck was identified in the pure-JavaScript password hashing library (`bcryptjs`), where key expansion within the V8 runtime consumed ~200–240ms per verification. Migrated to the native C++ `bcrypt` library, resolving the bottleneck and eliminating the CPU-bound latency without requiring any modifications to existing database hashes or API contracts.
 
+---
 
+## 22. Multi-Provider AI Architecture: Factory & Strategy Fallback Pattern
+
+### The Decision
+Refactored AI interactions from a hardcoded single-provider Gemini implementation to an extensible class-based architecture utilizing the Factory and Strategy patterns:
+- **`BaseAIService`**: Abstract base defining uniform asynchronous contracts (`getEmbedding`, `getEmbeddingsBatch`, `getEmbeddingsForChunks`, `generateDocumentSummary`, `streamRagCompletion`).
+- **`GeminiService`**: Concrete implementation utilizing `@google/genai` with intra-provider model cascading (`gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-1.5-flash`).
+- **`OpenAIService`**: Concrete fallback implementation utilizing the official `openai` SDK with `gpt-4o-mini` for chat and summary generation and `text-embedding-3-small` for vector embeddings (configured with `dimensions: 768` to ensure vector dimensional compatibility with Gemini embeddings).
+- **`AIFactory` & `MultiProviderAIService`**: Factory and composite orchestrator that automatically routes requests through the configured provider chain and seamlessly catches rate-limit (`429`) or server-overload (`503`) errors, failing over to OpenAI.
+- **Metadata Persistence**:
+  - `document_chunks`: `aiVendor`, `aiModel`
+  - `documents`: `summaryAiVendor`, `summaryAiModel`
+  - `chat_messages`: `aiVendor`, `aiModel`
+  - No database indexes created on `aiVendor` as the application does not filter or query by vendor.
+
+### The Alternatives
+1. **Single-provider Gemini-only implementation**: Retaining Gemini as the sole AI backend. Rejected due to Single Point of Failure (SPOF) risks when free/tier rate limits are reached or during provider outages.
+2. **Direct HTTP `fetch` to OpenAI API**: Avoid adding the `openai` npm dependency and handcraft REST calls. Rejected because the official `openai` SDK provides robust typings, built-in retry handling, and standard streaming chunk iterators.
+3. **Dedicated separate vector stores for each AI model**: Maintaining separate collections for Gemini and OpenAI vectors. Rejected as unnecessarily complex; using `dimensions: 768` for OpenAI's `text-embedding-3-small` allows uniform vector storage and cosine similarity scoring across the same datastore.
+
+### The Reasoning
+Relying solely on a single AI provider presents high availability risks, particularly under burst loads where rate limits (`429`) or temporary capacity constraints (`503`) can stall document ingestion and user queries. Introducing the Factory/Strategy pattern creates an extensible foundation where new providers (e.g. Anthropic, Mistral, Ollama) can be plugged in simply by subclassing `BaseAIService` and registering with `AIFactory`.

@@ -16,6 +16,8 @@ const schema = new mongoose.Schema({
       score: Number,
     },
   ],
+  aiVendor: { type: String, default: null },
+  aiModel: { type: String, default: null },
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date, default: null },
 }, { timestamps: true });

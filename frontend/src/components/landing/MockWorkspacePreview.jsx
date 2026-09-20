@@ -109,7 +109,7 @@ export default function MockWorkspacePreview({ onOpenAuth }) {
 
           <div className="pt-2 border-t border-slate-800/80">
             <div className="p-2.5 rounded-xl border border-dashed border-slate-800 text-center text-slate-400 text-[11px]">
-              <span>+ Drag & drop more files (up to 10MB)</span>
+              <span>+ Drag & drop more files (max 5 files, up to 10MB each)</span>
             </div>
           </div>
         </div>

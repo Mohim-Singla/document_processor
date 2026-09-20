@@ -60,6 +60,9 @@ export class GeminiService extends BaseAIService {
         const response = await ai.models.embedContent({
           model: candidate,
           contents: text,
+          config: {
+            outputDimensionality: GEMINI_CONFIG.EMBEDDING_DIMENSIONS,
+          },
         });
 
         const values = response.embeddings?.[0]?.values || response.embedding?.values;
@@ -141,6 +144,9 @@ export class GeminiService extends BaseAIService {
         const response = await ai.models.embedContent({
           model: candidate,
           contents: texts,
+          config: {
+            outputDimensionality: GEMINI_CONFIG.EMBEDDING_DIMENSIONS,
+          },
         });
 
         if (response.embeddings && response.embeddings.length > 0) {
@@ -166,7 +172,7 @@ export class GeminiService extends BaseAIService {
           // Check if Google provided an explicit retryDelay (e.g. "retry in 3s" or retryDelay: "4s")
           let backoffMs = GEMINI_CONFIG.CAPACITY_RETRY_DELAY_MS;
           const retryMatch = err.message?.match(/retry in ([0-9.]+)s/i) || err.message?.match(/"retryDelay":\s*"([0-9]+)s"/i);
-          if (retryMatch && parseFloat(retryMatch[1]) <= 10) {
+          if (retryMatch && parseFloat(retryMatch[1]) <= (GEMINI_CONFIG.MAX_CAPACITY_RETRY_DELAY_SECONDS || 30)) {
             backoffMs = Math.ceil(parseFloat(retryMatch[1]) * 1000) + 200;
           }
 

@@ -558,7 +558,7 @@ Authorization: Bearer <signed_jwt_token>
 - **Request Headers**:
   - `Content-Type: multipart/form-data`
 - **Request Payload**:
-  - Field name: `files` (array of multipart file buffers; configurable thresholds with initial defaults: max 10 MB per file, max 10 files per batch).
+  - Field name: `files` (array of multipart file buffers; configurable thresholds with initial defaults: max 10 MB per file, max 5 files per batch).
   - Allowed file formats:
     - Documents: PDF (`application/pdf`), Word DOCX (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`)
     - Plaintext & Markdown: TXT (`text/plain`), MD (`text/markdown`, `text/x-markdown`, `.md`, `.markdown`)
@@ -921,7 +921,7 @@ When a session is marked as `ARCHIVED` (`session.status === 'ARCHIVED'`), the ba
 | `AWS_SQS_WAIT_TIME_SECONDS` | Integer | No | `20` | Duration (seconds) for SQS long-polling wait time (max 20s). |
 | `AWS_SQS_POLLING_WAIT_TIME_MS` | Integer | No | `1000` | Delay (milliseconds) to wait before repolling the queue (1s throttle). |
 | `MAX_FILE_SIZE_MB` | Integer | No | `10` | Maximum allowable file size in megabytes for uploaded documents (configurable). |
-| `MAX_BATCH_FILE_COUNT` | Integer | No | `10` | Maximum allowable number of files per batch upload action (configurable). |
+| `MAX_BATCH_FILE_COUNT` | Integer | No | `5` | Maximum allowable number of files per batch upload action (configurable). |
 | `GEMINI_API_KEY` | String | Yes | None | Google Cloud Gemini API key for embeddings and generation. |
 | `GEMINI_LLM_MODEL` | String | No | `gemini-3.5-flash` | Primary Gemini model identifier for conversational Q&A. |
 | `GEMINI_EMBEDDING_MODEL` | String | No | `gemini-embedding-001` | Gemini model identifier for text vector embeddings. |
